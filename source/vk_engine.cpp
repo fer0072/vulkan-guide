@@ -628,12 +628,13 @@ void VulkanEngine::run()
 
         ImGui::NewFrame();
 
-        ImGui::Begin("Stats");
-
-		ImGui::Text("frametime %f ms", stats.frametime);
-		ImGui::Text("drawtime %f ms", stats.mesh_draw_time);
-		ImGui::Text("triangles %i", stats.triangle_count);
-		ImGui::Text("draws %i", stats.drawcall_count);
+        if (ImGui::Begin("Stats"))
+        {
+            ImGui::Text("frametime %f ms", stats.frametime);
+            ImGui::Text("drawtime %f ms", stats.mesh_draw_time);
+            ImGui::Text("triangles %i", stats.triangle_count);
+            ImGui::Text("draws %i", stats.drawcall_count);
+        }
         ImGui::End();
 
 		if (ImGui::Begin("background")) {
@@ -648,14 +649,10 @@ void VulkanEngine::run()
 			ImGui::InputFloat4("data2", (float*)&selected.data.data2);
 			ImGui::InputFloat4("data3", (float*)&selected.data.data3);
 			ImGui::InputFloat4("data4", (float*)&selected.data.data4);
-
-			ImGui::End();
 		}
+        ImGui::End();
 
 		ImGui::Render();
-
-        // imgui commands
-        // ImGui::ShowDemoWindow();
 
         update_scene();
 
