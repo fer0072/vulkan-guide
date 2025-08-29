@@ -147,6 +147,23 @@ void VulkanEngine::init_default_data() {
 	sampl.magFilter = VK_FILTER_LINEAR;
 	sampl.minFilter = VK_FILTER_LINEAR;
 	vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerLinear);
+
+    _mainDeletionQueue.push_function([=]() {
+        vkDestroyImageView(_device, _whiteImage.imageView, nullptr);
+        vmaDestroyImage(_allocator, _whiteImage.image, _whiteImage.allocation);
+
+        vkDestroyImageView(_device, _greyImage.imageView, nullptr);
+        vmaDestroyImage(_allocator, _greyImage.image, _greyImage.allocation);
+
+        vkDestroyImageView(_device, _blackImage.imageView, nullptr);
+        vmaDestroyImage(_allocator, _blackImage.image, _blackImage.allocation);
+
+        vkDestroyImageView(_device, _errorCheckerboardImage.imageView, nullptr);
+        vmaDestroyImage(_allocator, _errorCheckerboardImage.image, _errorCheckerboardImage.allocation);
+
+        destroy_buffer(rectangle.indexBuffer);
+        destroy_buffer(rectangle.vertexBuffer);
+        });
 }
 
 void VulkanEngine::cleanup()
@@ -194,7 +211,9 @@ void VulkanEngine::init_background_pipelines()
 	computeLayout.pPushConstantRanges = &pushConstant;
 	computeLayout.pushConstantRangeCount = 1;
 
-	VK_CHECK(vkCreatePipelineLayout(_device, &computeLayout, nullptr, &_gradientPipelineLayout));
+    VkPipelineLayout backgroundPipelineLayout;
+
+	VK_CHECK(vkCreatePipelineLayout(_device, &computeLayout, nullptr, &backgroundPipelineLayout));
 
 	VkShaderModule gradientShader;
 	if (!vkutil::load_shader_module("../../shaders/gradient_color.comp.spv", _device, &gradientShader)) {
@@ -216,11 +235,11 @@ void VulkanEngine::init_background_pipelines()
 	VkComputePipelineCreateInfo computePipelineCreateInfo{};
 	computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 	computePipelineCreateInfo.pNext = nullptr;
-	computePipelineCreateInfo.layout = _gradientPipelineLayout;
+	computePipelineCreateInfo.layout = backgroundPipelineLayout;
 	computePipelineCreateInfo.stage = stageinfo;
 
 	ComputeEffect gradient;
-	gradient.layout = _gradientPipelineLayout;
+	gradient.layout = backgroundPipelineLayout;
 	gradient.name = "gradient";
 	gradient.data = {};
 
@@ -234,7 +253,7 @@ void VulkanEngine::init_background_pipelines()
 	computePipelineCreateInfo.stage.module = skyShader;
 
 	ComputeEffect sky;
-	sky.layout = _gradientPipelineLayout;
+	sky.layout = backgroundPipelineLayout;
 	sky.name = "sky";
 	sky.data = {};
 	//default sky parameters
@@ -250,9 +269,9 @@ void VulkanEngine::init_background_pipelines()
 	vkDestroyShaderModule(_device, gradientShader, nullptr);
 	vkDestroyShaderModule(_device, skyShader, nullptr);
 	_mainDeletionQueue.push_function([&]() {
-		vkDestroyPipelineLayout(_device, _gradientPipelineLayout, nullptr);
-		vkDestroyPipeline(_device, sky.pipeline, nullptr);
-		vkDestroyPipeline(_device, gradient.pipeline, nullptr);
+        vkDestroyPipeline(_device, backgroundEffects[0].pipeline, nullptr);
+        vkDestroyPipeline(_device, backgroundEffects[1].pipeline, nullptr);
+		vkDestroyPipelineLayout(_device, backgroundEffects[0].layout, nullptr);
 		});
 }
 
@@ -265,9 +284,9 @@ void VulkanEngine::draw_main(VkCommandBuffer cmd)
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 
 	// bind the descriptor set containing the draw image for the compute pipeline
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradientPipelineLayout, 0, 1, &_drawImageDescriptors, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.layout, 0, 1, &_drawImageDescriptors, 0, nullptr);
 
-	vkCmdPushConstants(cmd, _gradientPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
+	vkCmdPushConstants(cmd, effect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
 	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
 	vkCmdDispatch(cmd, std::ceil(_drawExtent.width / 16.0), std::ceil(_drawExtent.height / 16.0), 1);
 
@@ -875,16 +894,17 @@ void VulkanEngine::init_vulkan()
     SDL_Vulkan_CreateSurface(_window, _instance, &_surface);
 
     VkPhysicalDeviceVulkan13Features features13 {};
+    features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
 	features13.dynamicRendering = true;
 	features13.synchronization2 = true;
-   
-   VkPhysicalDeviceVulkan12Features features12 {};
-   features12.bufferDeviceAddress = true;
-   features12.descriptorIndexing = true; 
-   features12.descriptorBindingPartiallyBound = true;
-   features12.descriptorBindingVariableDescriptorCount = true;
-   features12.runtimeDescriptorArray = true;
-
+    
+    VkPhysicalDeviceVulkan12Features features12 {};
+    features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    features12.bufferDeviceAddress = true;
+    features12.descriptorIndexing = true; 
+    features12.descriptorBindingPartiallyBound = true;
+    features12.descriptorBindingVariableDescriptorCount = true;
+    features12.runtimeDescriptorArray = true;
 
     // use vkbootstrap to select a gpu.
     // We want a gpu that can write to the SDL surface and supports vulkan 1.2

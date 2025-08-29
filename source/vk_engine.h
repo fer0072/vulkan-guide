@@ -175,9 +175,6 @@ public:
 
     DescriptorAllocator globalDescriptorAllocator;
 
-    VkPipeline _gradientPipeline;
-    VkPipelineLayout _gradientPipelineLayout;
-
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
 
