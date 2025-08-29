@@ -2,13 +2,13 @@
 #include "glm/gtx/quaternion.hpp"
 #include "glm/gtx/transform.hpp"
 
-glm::mat4 Camera::get_view_matrix() const
+glm::mat4 Camera::getViewMatrix() const
 {
 	glm::vec3 camPos = position;
 
-	glm::mat4 cam_rot = (get_rotation_matrix());
+	glm::mat4 camRot = (getRotationMatrix());
 
-	glm::mat4 view = glm::translate(glm::mat4{ 1 }, camPos) * cam_rot;
+	glm::mat4 view = glm::translate(glm::mat4{ 1 }, camPos) * camRot;
 
 	//we need to invert the camera matrix
 	view = glm::inverse(view);
@@ -16,7 +16,7 @@ glm::mat4 Camera::get_view_matrix() const
 	return view;
 }
 
-glm::mat4 Camera::get_projection_matrix(bool bReverse /*= true*/) const
+glm::mat4 Camera::getProjectionMatrix(bool bReverse /*= true*/) const
 {
 	if (bReverse)
 	{
@@ -31,7 +31,7 @@ glm::mat4 Camera::get_projection_matrix(bool bReverse /*= true*/) const
 	}
 }
 
-glm::mat4 Camera::get_rotation_matrix() const
+glm::mat4 Camera::getRotationMatrix() const
 {
 	glm::mat4 yawRotation = glm::rotate(glm::mat4(1.0f), yaw, glm::vec3{ 0.f, 1.f, 0.f });
 	glm::mat4 pitchRotation = glm::rotate(glm::mat4(1.0f), pitch, glm::vec3{ 1.f, 0.f, 0.f });
@@ -39,7 +39,7 @@ glm::mat4 Camera::get_rotation_matrix() const
 	return yawRotation * pitchRotation;
 }
 
-void Camera::process_input_event(SDL_Event* ev)
+void Camera::processInputEvent(SDL_Event* ev)
 {
 	if (ev->type == SDL_KEYDOWN)
 	{
@@ -115,13 +115,13 @@ void Camera::process_input_event(SDL_Event* ev)
 	inputAxis = glm::clamp(inputAxis, { -1.0,-1.0,-1.0 }, { 1.0,1.0,1.0 });
 }
 
-void Camera::update_camera(float deltaSeconds)
+void Camera::updateCamera(float deltaSeconds)
 {
-	const float cam_vel = 0.001f + bSprint * 0.01;
+	float cameraVelocity = 0.001f + bSprint * 0.01f;
 
-	glm::mat4 cam_rot = get_rotation_matrix();
+	glm::mat4 cameraRotation = getRotationMatrix();
 
-	velocity = cam_rot * glm::vec4(inputAxis, 0.0f) * cam_vel;
+	velocity = cameraRotation * glm::vec4(inputAxis, 0.0f) * cameraVelocity;
 
 	position += (velocity * 10.0f * deltaSeconds);
 }

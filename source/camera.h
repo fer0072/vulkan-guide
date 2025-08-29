@@ -13,10 +13,10 @@ public:
     bool bSprint = false;
     bool bLocked = false;
 
-    void process_input_event(SDL_Event* ev);
-    void update_camera(float deltaSeconds);
+    void processInputEvent(SDL_Event* ev);
+    void updateCamera(float deltaSeconds);
 
-    glm::mat4 get_view_matrix() const;
-    glm::mat4 get_projection_matrix(bool bReverse = true) const;
-    glm::mat4 get_rotation_matrix() const;
+    glm::mat4 getViewMatrix() const;
+    glm::mat4 getProjectionMatrix(bool bReverse = true) const;
+    glm::mat4 getRotationMatrix() const;
 };

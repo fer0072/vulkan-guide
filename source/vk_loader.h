@@ -31,7 +31,6 @@ struct GeoSurface {
 struct MeshAsset {
     std::string name;
 
-   
     std::vector<GeoSurface> surfaces;
     GPUMeshBuffers meshBuffers;
 };
@@ -57,7 +56,7 @@ struct LoadedGLTF : public IRenderable {
 
     ~LoadedGLTF() { clearAll(); };
 
-    virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx);
+    virtual void draw(const glm::mat4& topMatrix, DrawContext& ctx);
 
 private:
 

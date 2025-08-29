@@ -22,8 +22,6 @@
 #include <glm/vec4.hpp>
 //< intro 
 
-
-
 // we will add our main reusable types here
 struct AllocatedImage {
     VkImage image;
@@ -47,7 +45,7 @@ struct GPUGLTFMaterial {
 
 static_assert(sizeof(GPUGLTFMaterial) == 256);
 
-struct GPUSceneData {
+struct GPU_sceneData {
     glm::mat4 view;
     glm::mat4 proj;
     glm::mat4 viewproj;
@@ -58,9 +56,9 @@ struct GPUSceneData {
 
 //> mat_types
 enum class MaterialPass :uint8_t {
-    MainColor,
-    Transparent,
-    Other
+    mainColor,
+    transparent,
+    other
 };
 struct MaterialPipeline {
 	VkPipeline pipeline;
@@ -75,7 +73,6 @@ struct MaterialInstance {
 //< mat_types
 //> vbuf_types
 struct Vertex {
-
 	glm::vec3 position;
 	float uv_x;
 	glm::vec3 normal;
@@ -103,8 +100,7 @@ struct DrawContext;
 
 // base class for a renderable dynamic object
 class IRenderable {
-
-    virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
+    virtual void draw(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
 };
 
 // implementation of a drawable scene node.
@@ -127,11 +123,11 @@ struct Node : public IRenderable {
         }
     }
 
-    virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx)
+    virtual void draw(const glm::mat4& topMatrix, DrawContext& ctx)
     {
         // draw children
         for (auto& c : children) {
-            c->Draw(topMatrix, ctx);
+            c->draw(topMatrix, ctx);
         }
     }
 };

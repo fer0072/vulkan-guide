@@ -83,15 +83,15 @@ struct FrameData {
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 struct DrawContext {
-    std::vector<RenderObject> OpaqueSurfaces;
-    std::vector<RenderObject> TransparentSurfaces;
+    std::vector<RenderObject> opaqueSurfaces;
+    std::vector<RenderObject> transparentSurfaces;
 };
 
 struct EngineStats {
-    float frametime;
-    int triangle_count;
-    int drawcall_count;
-    float mesh_draw_time;
+    float frameTime;
+    int triangleCount;
+    int drawcallCount;
+    float meshDrawTime;
 };
 
 struct GLTFMetallic_Roughness {
@@ -122,37 +122,76 @@ struct GLTFMetallic_Roughness {
 
     DescriptorWriter writer;
 
-    void build_pipelines(VulkanEngine* engine);
-    void clear_resources(VkDevice device);
+    void buildPipelines(VulkanEngine* engine);
+    void clearResources(VkDevice device);
 
-    MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
+    MaterialInstance updateMaterialDescriptorSets(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
 
 struct MeshNode : public Node {
 
     std::shared_ptr<MeshAsset> mesh;
 
-    virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
+    virtual void draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
 };
 struct TextureID {
-    uint32_t Index;
+    uint32_t index;
 };
 
 struct TextureCache {
 
-    std::vector<VkDescriptorImageInfo> Cache;
-    std::unordered_map<std::string, TextureID> NameMap;
-    TextureID AddTexture(const VkImageView& image, VkSampler sampler);
+    std::vector<VkDescriptorImageInfo> cache;
+    TextureID addTexture(const VkImageView& image, VkSampler sampler);
 };
 
 class VulkanEngine {
 public:
-    bool _isInitialized { false };
-    int _frameNumber { 0 };
 
-    VkExtent2D _windowExtent { 1700, 900 };
+    // singleton style getter.multiple engines is not supported
+    static VulkanEngine& Get();
 
-    struct SDL_Window* _window { nullptr };
+    // initializes everything in the engine
+    void init();
+
+    // shuts down the engine
+    void cleanup();
+
+    // draw loop
+    void draw();
+    void drawMain(VkCommandBuffer cmd);
+    void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView);
+    void drawGeometry(VkCommandBuffer cmd);
+
+    // run main loop
+    void run();
+
+    void updateScene();
+
+    // upload a mesh into a pair of gpu buffers. If descriptor allocator is not
+    // null, it will also create a descriptor that points to the vertex buffer
+    GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+
+    FrameData& getCurrentFrame();
+    FrameData& getLastFrame();
+
+    AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+
+    AllocatedImage createImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+    AllocatedImage createImage(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+
+    void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
+
+    void destroyImage(const AllocatedImage& img);
+    void destroyBuffer(const AllocatedBuffer& buffer);
+
+public:
+
+    bool _isInitialized = false;
+    int _frameNumber = 0;
+
+    VkExtent2D _windowExtent = VkExtent2D(1700, 900);
+
+    struct SDL_Window* _window = nullptr;
 
     VkInstance _instance;
     VkDebugUtilsMessengerEXT _debug_messenger;
@@ -173,7 +212,7 @@ public:
     VkExtent2D _drawExtent;
     VkDescriptorPool _descriptorPool;
 
-    DescriptorAllocator globalDescriptorAllocator;
+    DescriptorAllocator _globalDescriptorAllocator;
 
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
@@ -185,9 +224,9 @@ public:
 
     VmaAllocator _allocator; // vma lib allocator
 
-    VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+    VkDescriptorSetLayout _gpu_sceneDataDescriptorLayout;
 
-    GLTFMetallic_Roughness metalRoughMaterial;
+    GLTFMetallic_Roughness _metalRoughMaterial;
 
     // draw resources
     AllocatedImage _drawImage;
@@ -206,89 +245,50 @@ public:
     VkSampler _defaultSamplerLinear;
     VkSampler _defaultSamplerNearest;
 
-    TextureCache texCache;
+    TextureCache _texCache;
 
-    GPUMeshBuffers rectangle;
-    DrawContext drawCommands;
+    GPUMeshBuffers _rectangle;
+    DrawContext _drawCommands;
 
-    GPUSceneData sceneData;
+    GPU_sceneData _sceneData;
 
-    Camera mainCamera;
+    Camera _mainCamera;
 
-    EngineStats stats;
+    EngineStats _engineStats;
 
-    std::vector<ComputeEffect> backgroundEffects;
-    int currentBackgroundEffect { 0 };
+    std::vector<ComputeEffect> _backgroundEffects;
+    int _currentBackgroundEffect = 0;
 
-    // singleton style getter.multiple engines is not supported
-    static VulkanEngine& Get();
+    std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> _loadedScenes;
+    std::vector<std::shared_ptr<LoadedGLTF>> _brickadiaScene;
 
-    // initializes everything in the engine
-    void init();
-
-    // shuts down the engine
-    void cleanup();
-
-    // draw loop
-    void draw();
-    void draw_main(VkCommandBuffer cmd);
-    void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
-
-    void render_nodes();
-
-    void draw_geometry(VkCommandBuffer cmd);
-
-    // run main loop
-    void run();
-
-    void update_scene();
-
-    // upload a mesh into a pair of gpu buffers. If descriptor allocator is not
-    // null, it will also create a descriptor that points to the vertex buffer
-    GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
-
-    FrameData& get_current_frame();
-    FrameData& get_last_frame();
-
-    AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-
-    AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-    AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-
-    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
-
-    std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
-    std::vector<std::shared_ptr<LoadedGLTF>> brickadiaScene;
-
-    void destroy_image(const AllocatedImage& img);
-    void destroy_buffer(const AllocatedBuffer& buffer);
-
-    bool resize_requested { false };
-    bool freeze_rendering { false };
+    bool shouldResizeWindow = false;
+    bool shouldFreezeRendering = false;
 
 private:
-    void init_vulkan();
+    void initVulkan();
 
-    void init_swapchain();
+    void initSwapchain();
 
-    void create_swapchain(uint32_t width, uint32_t height);
+    void createSwapchain(uint32_t width, uint32_t height);
 
-    void resize_swapchain();
+    void resizeSwapchain();
 
-    void destroy_swapchain();
+    void destroySwapchain();
 
-    void init_commands();
+    void initCommands();
 
-    void init_pipelines();
-    void init_background_pipelines();
+    void initPipelines();
 
-    void init_descriptors();
+    void initBackgroundPipelines();
 
-    void init_sync_structures();
+    void initDescriptors();
 
-    void init_renderables();
+    void initSyncStructures();
 
-    void init_imgui();
+    void initRenderables();
 
-    void init_default_data();
+    void initImgui();
+
+    void initDefaultData();
 };
