@@ -296,7 +296,7 @@ void VulkanEngine::draw_main(VkCommandBuffer cmd)
 
 	vkCmdPushConstants(cmd, effect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
 	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
-	vkCmdDispatch(cmd, std::ceil(_drawExtent.width / 16.0), std::ceil(_drawExtent.height / 16.0), 1);
+	vkCmdDispatch(cmd, uint32_t(std::ceil(_drawExtent.width / 16.0)), uint32_t(std::ceil(_drawExtent.height / 16.0)), 1);
 
 	//draw the triangle
 
@@ -344,8 +344,8 @@ void VulkanEngine::draw()
         resize_requested = true;
 		return ;
 	}
-	_drawExtent.height = std::min(_swapchainExtent.height, _drawImage.imageExtent.height) * 1.f;
-	_drawExtent.width = std::min(_swapchainExtent.width, _drawImage.imageExtent.width) *  1.f;
+	_drawExtent.height = uint32_t(std::min(_swapchainExtent.height, _drawImage.imageExtent.height) * 1.f);
+	_drawExtent.width = uint32_t(std::min(_swapchainExtent.width, _drawImage.imageExtent.width) *  1.f);
 
 	VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
 
@@ -492,7 +492,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
     VkDescriptorSetVariableDescriptorCountAllocateInfo allocArrayInfo{.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO, .pNext = nullptr};
    
-    uint32_t descriptorCounts =texCache.Cache.size();
+    uint32_t descriptorCounts = uint32_t(texCache.Cache.size());
     allocArrayInfo.pDescriptorCounts = &descriptorCounts;
     allocArrayInfo.descriptorSetCount = 1;
 
@@ -506,7 +506,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
     if (texCache.Cache.size() > 0) {
 		VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-		arraySet.descriptorCount = texCache.Cache.size();
+		arraySet.descriptorCount = uint32_t(texCache.Cache.size());
 		arraySet.dstArrayElement = 0;
 		arraySet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		arraySet.dstBinding = 1;
@@ -642,7 +642,7 @@ void VulkanEngine::run()
 
 			ImGui::Text("Selected effect: ", selected.name);
 
-			ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, backgroundEffects.size() - 1);
+			ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, uint32_t(backgroundEffects.size()) - 1);
 
 			ImGui::InputFloat4("data1", (float*)&selected.data.data1);
 			ImGui::InputFloat4("data2", (float*)&selected.data.data2);
@@ -1398,7 +1398,7 @@ TextureID TextureCache::AddTexture(const VkImageView& image, VkSampler sampler)
         }
     }
 
-	uint32_t idx = Cache.size();
+	uint32_t idx = uint32_t(Cache.size());
 
 	Cache.push_back(VkDescriptorImageInfo{ .sampler = sampler,.imageView = image, .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL });
 
