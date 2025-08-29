@@ -20,12 +20,12 @@
 
 #define VMA_IMPLEMENTATION
 #ifdef _DEBUG
-#define VMA_DEBUG_LOG_FORMAT(format, ...)  printf((format), __VA_ARGS__)
-#define VMA_DEBUG_LOG(str)                 printf("%s\n", (str))
-#define VMA_DEBUG_INITIALIZE_ALLOCATIONS 1
-#define VMA_DEBUG_DETECT_CORRUPTION 1
-#define VMA_DEBUG_MARGIN 16
-#define VMA_DEBUG_GLOBAL_MUTEX 1
+//#define VMA_DEBUG_LOG_FORMAT(format, ...)  printf((format), __VA_ARGS__)
+//#define VMA_DEBUG_LOG(str)                 printf("%s\n", (str))
+//#define VMA_DEBUG_INITIALIZE_ALLOCATIONS 1
+//#define VMA_DEBUG_DETECT_CORRUPTION 1
+//#define VMA_DEBUG_MARGIN 16
+//#define VMA_DEBUG_GLOBAL_MUTEX 1
 #endif
 #include "vk_mem_alloc.h"
 
@@ -683,11 +683,10 @@ void VulkanEngine::update_scene()
 	sceneData.proj = projection;
 	sceneData.viewproj = projection * view;
 
-
-   // for (int i = 0; i < 16; i++)         {
+    if (loadedScenes.count("structure"))
+    {
         loadedScenes["structure"]->Draw(glm::mat4{ 1.f }, drawCommands);
-    //}
-	
+    }
 }
 
 AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
