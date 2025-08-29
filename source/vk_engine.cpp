@@ -612,8 +612,8 @@ void VulkanEngine::run()
 				}
             }
             
-            mainCamera.processSDLEvent(e);
             ImGui_ImplSDL2_ProcessEvent(&e);
+            mainCamera.process_input_event(&e);
         }
 
         if (freeze_rendering) continue;
@@ -668,9 +668,9 @@ void VulkanEngine::run()
 
 void VulkanEngine::update_scene()
 {
-	mainCamera.update();
+    mainCamera.update_camera(stats.frametime);
 
-	glm::mat4 view = mainCamera.getViewMatrix();
+	glm::mat4 view = mainCamera.get_view_matrix();
 
 	// camera projection
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_windowExtent.width / (float)_windowExtent.height, 10000.f, 0.1f);

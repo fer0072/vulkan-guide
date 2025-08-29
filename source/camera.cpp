@@ -2,51 +2,127 @@
 #include "glm/gtx/quaternion.hpp"
 #include "glm/gtx/transform.hpp"
 
-glm::mat4 Camera::getViewMatrix() const
+glm::mat4 Camera::get_view_matrix() const
 {
-    // to create a correct model view, we need to move the world in opposite
-    // direction to the camera
-    //  so we will create the camera model matrix and invert
-    glm::mat4 cameraTranslation = glm::translate(glm::mat4(1.f), position);
-    glm::mat4 cameraRotation = getRotationMatrix();
-    return glm::inverse(cameraTranslation * cameraRotation);
+	glm::vec3 camPos = position;
+
+	glm::mat4 cam_rot = (get_rotation_matrix());
+
+	glm::mat4 view = glm::translate(glm::mat4{ 1 }, camPos) * cam_rot;
+
+	//we need to invert the camera matrix
+	view = glm::inverse(view);
+
+	return view;
 }
 
-glm::mat4 Camera::getRotationMatrix() const
+glm::mat4 Camera::get_projection_matrix(bool bReverse /*= true*/) const
 {
-    // fairly typical FPS style camera. we join the pitch and yaw rotations into
-    // the final rotation matrix
-
-    glm::quat pitchRotation = glm::angleAxis(pitch, glm::vec3 { 1.f, 0.f, 0.f });
-    glm::quat yawRotation = glm::angleAxis(yaw, glm::vec3 { 0.f, -1.f, 0.f });
-
-    return glm::toMat4(yawRotation) * glm::toMat4(pitchRotation);
+	if (bReverse)
+	{
+		glm::mat4 pro = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 5000.0f, 0.1f);
+		pro[1][1] *= -1;
+		return pro;
+	}
+	else {
+		glm::mat4 pro = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 5000.0f);
+		pro[1][1] *= -1;
+		return pro;
+	}
 }
 
-void Camera::processSDLEvent(SDL_Event& e)
+glm::mat4 Camera::get_rotation_matrix() const
 {
-    if (e.type == SDL_KEYDOWN) {
-        if (e.key.keysym.sym == SDLK_w) { velocity.z = -1; }
-        if (e.key.keysym.sym == SDLK_s) { velocity.z = 1; }
-        if (e.key.keysym.sym == SDLK_a) { velocity.x = -1; }
-        if (e.key.keysym.sym == SDLK_d) { velocity.x = 1; }
-    }
-
-    if (e.type == SDL_KEYUP) {
-        if (e.key.keysym.sym == SDLK_w) { velocity.z = 0; }
-        if (e.key.keysym.sym == SDLK_s) { velocity.z = 0; }
-        if (e.key.keysym.sym == SDLK_a) { velocity.x = 0; }
-        if (e.key.keysym.sym == SDLK_d) { velocity.x = 0; }
-    }
-
-    if (e.type == SDL_MOUSEMOTION) {
-        yaw += (float)e.motion.xrel / 200.f;
-        pitch -= (float)e.motion.yrel / 200.f;
-    }
+	glm::mat4 yawRotation = glm::rotate(glm::mat4(1.0f), yaw, glm::vec3{ 0.f, 1.f, 0.f });
+	glm::mat4 pitchRotation = glm::rotate(glm::mat4(1.0f), pitch, glm::vec3{ 1.f, 0.f, 0.f });
+	
+	return yawRotation * pitchRotation;
 }
 
-void Camera::update()
+void Camera::process_input_event(SDL_Event* ev)
 {
-    glm::mat4 cameraRotation = getRotationMatrix();
-    position += glm::vec3(cameraRotation * glm::vec4(velocity * 0.5f, 0.f));
+	if (ev->type == SDL_KEYDOWN)
+	{
+		switch (ev->key.keysym.sym)
+		{
+		case SDLK_UP:
+		case SDLK_w:
+			inputAxis.z -= 1.f;
+			break;
+		case SDLK_DOWN:
+		case SDLK_s:
+			inputAxis.z += 1.f;
+			break;
+		case SDLK_LEFT:
+		case SDLK_a:
+			inputAxis.x -= 1.f;
+			break;
+		case SDLK_RIGHT:
+		case SDLK_d:
+			inputAxis.x += 1.f;
+			break;
+		case SDLK_q:
+			inputAxis.y -= 1.f;
+			break;
+
+		case SDLK_e:
+			inputAxis.y += 1.f;
+			break;
+		case SDLK_LSHIFT:
+			bSprint = true;
+			break;
+		}
+	}
+	else if (ev->type == SDL_KEYUP)
+	{
+		switch (ev->key.keysym.sym)
+		{
+		case SDLK_UP:
+		case SDLK_w:
+			inputAxis.z += 1.f;
+			break;
+		case SDLK_DOWN:
+		case SDLK_s:
+			inputAxis.z -= 1.f;
+			break;
+		case SDLK_LEFT:
+		case SDLK_a:
+			inputAxis.x += 1.f;
+			break;
+		case SDLK_RIGHT:
+		case SDLK_d:
+			inputAxis.x -= 1.f;
+			break;
+		case SDLK_q:
+			inputAxis.y += 1.f;
+			break;
+		case SDLK_e:
+			inputAxis.y -= 1.f;
+			break;
+		case SDLK_LSHIFT:
+			bSprint = false;
+			break;
+		}
+	}
+	else if (ev->type == SDL_MOUSEMOTION) {
+		if (!bLocked)
+		{
+			yaw -= ev->motion.xrel * 0.003f;
+			pitch -= ev->motion.yrel * 0.003f;
+		}
+	}
+
+	inputAxis = glm::clamp(inputAxis, { -1.0,-1.0,-1.0 }, { 1.0,1.0,1.0 });
 }
+
+void Camera::update_camera(float deltaSeconds)
+{
+	const float cam_vel = 0.001f + bSprint * 0.01;
+
+	glm::mat4 cam_rot = get_rotation_matrix();
+
+	velocity = cam_rot * glm::vec4(inputAxis, 0.0f) * cam_vel;
+
+	position += (velocity * 10.0f * deltaSeconds);
+}
+

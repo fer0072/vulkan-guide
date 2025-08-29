@@ -3,17 +3,20 @@
 
 class Camera {
 public:
-    glm::vec3 velocity;
-    glm::vec3 position;
-    // vertical rotation
-    float pitch { 0.f };
-    // horizontal rotation
-    float yaw { 0.f };
+    glm::vec3 velocity = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f);
+    glm::vec3 inputAxis = glm::vec3(0.0f, 0.0f, 0.0f);
 
-    glm::mat4 getViewMatrix() const;
-    glm::mat4 getRotationMatrix() const;
+    float pitch = 0.0f; // vertical rotation
+    float yaw = 0.f; // horizontal rotation
 
-    void processSDLEvent(SDL_Event& e);
+    bool bSprint = false;
+    bool bLocked = false;
 
-    void update();
+    void process_input_event(SDL_Event* ev);
+    void update_camera(float deltaSeconds);
+
+    glm::mat4 get_view_matrix() const;
+    glm::mat4 get_projection_matrix(bool bReverse = true) const;
+    glm::mat4 get_rotation_matrix() const;
 };
