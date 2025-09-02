@@ -28,14 +28,10 @@ foreach(GLSL ${GLSL_SOURCE_FILES})
   set(SPIRV "${PROJECT_SOURCE_DIR}/shaders/${FILE_NAME}.spv")
   message(STATUS ${GLSL})
   message(STATUS COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV})
-  add_custom_command(
-    OUTPUT ${SPIRV}
-    COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV}
-    DEPENDS ${GLSL})
+  execute_process(
+        COMMAND "${GLSL_VALIDATOR}" "-V" "${GLSL}" "-o" "${SPIRV}"
+        RESULT_VARIABLE result
+    )
   list(APPEND SPIRV_BINARY_FILES ${SPIRV})
 endforeach(GLSL)
 
-add_custom_target(
-    Shaders 
-    DEPENDS ${SPIRV_BINARY_FILES}
-    )
