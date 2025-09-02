@@ -78,6 +78,8 @@ struct FrameData {
 
     VkCommandPool _commandPool;
     VkCommandBuffer _mainCommandBuffer;
+
+    AllocatedBuffer _sceneDataBuffer;
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -91,7 +93,9 @@ struct EngineStats {
     float frameTime;
     int triangleCount;
     int drawcallCount;
-    float meshDrawTime;
+    float shadowPassTime;
+    float forwardPassTime;
+    float transparentPassTime;
 };
 
 struct GLTFMetallic_Roughness {
@@ -160,7 +164,11 @@ public:
     void draw();
     void drawMain(VkCommandBuffer cmd);
     void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView);
-    void drawGeometry(VkCommandBuffer cmd);
+
+    void generateDrawCall(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor, const RenderObject& renderObject);
+    void shadowPass(VkCommandBuffer cmd);
+    void forwardPass(VkCommandBuffer cmd);
+    void transparentPass(VkCommandBuffer cmd);
 
     // run main loop
     void run();
@@ -225,6 +233,7 @@ public:
     VmaAllocator _allocator; // vma lib allocator
 
     VkDescriptorSetLayout _gpu_sceneDataDescriptorLayout;
+    VkDescriptorSet _globalDescriptor;
 
     GLTFMetallic_Roughness _metalRoughMaterial;
 
@@ -279,6 +288,8 @@ private:
     void initDescriptors();
 
     void initSyncStructures();
+
+    void initSceneData();
 
     void initRenderables();
 

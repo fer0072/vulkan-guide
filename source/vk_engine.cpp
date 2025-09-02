@@ -1,5 +1,4 @@
-﻿
-#include "vk_engine.h"
+﻿#include "vk_engine.h"
 
 #include "vk_images.h"
 #include "vk_loader.h"
@@ -71,6 +70,8 @@ void VulkanEngine::init()
     initPipelines();
 
     createDefaultObjects();
+
+    initSceneData();
 
     initRenderables();
 
@@ -280,13 +281,26 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
 	VkRenderingInfo renderInfo = vkInit::renderingInfo(_drawExtent, &colorAttachment, &depthAttachment);
 
 	vkCmdBeginRendering(cmd, &renderInfo);
-	auto start = std::chrono::system_clock::now();
-	drawGeometry(cmd);
 
-	auto end = std::chrono::system_clock::now();
-	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    _engineStats.drawcallCount = 0;
+    _engineStats.triangleCount = 0;
 
-	_engineStats.meshDrawTime = elapsed.count() / 1000.f;
+    // Update the data of scene buffer.
+    GPU_sceneData* sceneUniformData = (GPU_sceneData*)getCurrentFrame()._sceneDataBuffer.allocation->GetMappedData();
+    *sceneUniformData = _sceneData;
+
+    // Create the global descriptor set that binds to the scene uniform data buffer.
+    VkDescriptorSetVariableDescriptorCountAllocateInfo allocArrayInfo{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO, .pNext = nullptr };
+
+    uint32_t descriptorCounts = uint32_t(_texCache.cache.size());
+    allocArrayInfo.pDescriptorCounts = &descriptorCounts;
+    allocArrayInfo.descriptorSetCount = 1;
+
+    _globalDescriptor = getCurrentFrame()._frameDescriptors.allocate(_device, _gpu_sceneDataDescriptorLayout, &allocArrayInfo);
+
+    shadowPass(cmd);
+    forwardPass(cmd);
+    transparentPass(cmd);
 
 	vkCmdEndRendering(cmd);
 }
@@ -449,41 +463,82 @@ bool isVisible(const RenderObject& obj, const glm::mat4& viewproj) {
     }
 }
 
-void VulkanEngine::drawGeometry(VkCommandBuffer cmd)
+void VulkanEngine::generateDrawCall(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor, const RenderObject& renderObject)
 {
-    std::vector<uint32_t> opaque_draws;
-    opaque_draws.reserve(_drawCommands.opaqueRenderObejcts.size());
+    MaterialPipeline* lastPipeline = nullptr;
+    MaterialInstance* lastMaterial = nullptr;
+    VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
+
+    if (renderObject.material != lastMaterial) {
+        lastMaterial = renderObject.material;
+        if (renderObject.material->pipeline != lastPipeline) {
+
+            lastPipeline = renderObject.material->pipeline;
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->pipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 0, 1,
+                &globalDescriptor, 0, nullptr);
+
+            VkViewport viewport = {};
+            viewport.x = 0;
+            viewport.y = 0;
+            viewport.width = (float)_drawExtent.width;
+            viewport.height = (float)_drawExtent.height;
+            viewport.minDepth = 0.f;
+            viewport.maxDepth = 1.f;
+
+            vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+            VkRect2D scissor = {};
+            scissor.offset.x = 0;
+            scissor.offset.y = 0;
+            scissor.extent.width = _drawExtent.width;
+            scissor.extent.height = _drawExtent.height;
+
+            vkCmdSetScissor(cmd, 0, 1, &scissor);
+        }
+
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 1, 1,
+            &renderObject.material->materialSet, 0, nullptr);
+    }
+        
+    if (renderObject.indexBuffer != lastIndexBuffer) {
+        lastIndexBuffer = renderObject.indexBuffer;
+        vkCmdBindIndexBuffer(cmd, renderObject.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    }
+
+    // calculate final mesh matrix
+    GPUDrawPushConstants push_constants;
+    push_constants.worldMatrix = renderObject.transform;
+    push_constants.vertexBuffer = renderObject.vertexBufferAddress;
+    
+    vkCmdPushConstants(cmd, renderObject.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+
+    _engineStats.drawcallCount++;
+    _engineStats.triangleCount += renderObject.indexCount / 3;
+    vkCmdDrawIndexed(cmd, renderObject.indexCount, 1, renderObject.firstIndex, 0, 0);
+}
+
+void VulkanEngine::shadowPass(VkCommandBuffer cmd)
+{
+
+}
+
+void VulkanEngine::forwardPass(VkCommandBuffer cmd)
+{
+    auto start = std::chrono::system_clock::now();
+
+    std::vector<uint32_t> visibleOpaqueRenderObjects;
+    visibleOpaqueRenderObjects.reserve(_drawCommands.opaqueRenderObejcts.size());
 
     // Do frustum culling based on the object's bounding box.
     for (int i = 0; i < _drawCommands.opaqueRenderObejcts.size(); i++) {
        if (isVisible(_drawCommands.opaqueRenderObejcts[i], _sceneData.viewproj)) {
-            opaque_draws.push_back(i);
+            visibleOpaqueRenderObjects.push_back(i);
        }
     }
 
-    //allocate a new uniform buffer for the scene data
-    AllocatedBuffer gpu_sceneDataBuffer = createBuffer(sizeof(GPU_sceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-    //add it to the deletion queue of this frame so it gets deleted once its been used
-    getCurrentFrame()._deletionQueue.push_function([=,this](){
-        destroyBuffer(gpu_sceneDataBuffer);
-    });
-
-    //write the buffer
-    GPU_sceneData* sceneUniformData = (GPU_sceneData*)gpu_sceneDataBuffer.allocation->GetMappedData();
-    *sceneUniformData = _sceneData;
-
-    VkDescriptorSetVariableDescriptorCountAllocateInfo allocArrayInfo{.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO, .pNext = nullptr};
-   
-    uint32_t descriptorCounts = uint32_t(_texCache.cache.size());
-    allocArrayInfo.pDescriptorCounts = &descriptorCounts;
-    allocArrayInfo.descriptorSetCount = 1;
-
-    //create a descriptor set that binds that buffer and update it
-    VkDescriptorSet globalDescriptor = getCurrentFrame()._frameDescriptors.allocate(_device, _gpu_sceneDataDescriptorLayout, &allocArrayInfo);
-
 	DescriptorWriter writer;
-	writer.addBufferDescriptorSet(0, gpu_sceneDataBuffer.buffer, sizeof(GPU_sceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneDataBuffer.buffer, sizeof(GPU_sceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
     if (_texCache.cache.size() > 0) {
 		VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
@@ -495,74 +550,60 @@ void VulkanEngine::drawGeometry(VkCommandBuffer cmd)
 		writer.writes.push_back(arraySet);
     }
 
-	writer.updateDescriptorSets(_device, globalDescriptor);
+	writer.updateDescriptorSets(_device, _globalDescriptor);
 
-    MaterialPipeline* lastPipeline = nullptr;
-    MaterialInstance* lastMaterial = nullptr;
-    VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
-
-    auto generateDrawCalls = [&](const RenderObject& r) {
-        if (r.material != lastMaterial) {
-            lastMaterial = r.material;
-            if (r.material->pipeline != lastPipeline) {
-
-                lastPipeline = r.material->pipeline;
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipeline);
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,r.material->pipeline->layout, 0, 1,
-                    &globalDescriptor, 0, nullptr);
-
-				VkViewport viewport = {};
-				viewport.x = 0;
-				viewport.y = 0;
-				viewport.width = (float)_drawExtent.width;
-				viewport.height = (float)_drawExtent.height;
-				viewport.minDepth = 0.f;
-				viewport.maxDepth = 1.f;
-
-				vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-				VkRect2D scissor = {};
-				scissor.offset.x = 0;
-				scissor.offset.y = 0;
-				scissor.extent.width = _drawExtent.width;
-				scissor.extent.height = _drawExtent.height;
-
-				vkCmdSetScissor(cmd, 0, 1, &scissor);
-            }
-
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 1, 1,
-                &r.material->materialSet, 0, nullptr);
-        }
-        if (r.indexBuffer != lastIndexBuffer) {
-            lastIndexBuffer = r.indexBuffer;
-            vkCmdBindIndexBuffer(cmd, r.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-        }
-        // calculate final mesh matrix
-        GPUDrawPushConstants push_constants;
-        push_constants.worldMatrix = r.transform;
-        push_constants.vertexBuffer = r.vertexBufferAddress;
-
-        vkCmdPushConstants(cmd, r.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
-
-        _engineStats.drawcallCount++;
-        _engineStats.triangleCount += r.indexCount / 3;
-        vkCmdDrawIndexed(cmd, r.indexCount, 1, r.firstIndex, 0, 0);
-    };
-
-    _engineStats.drawcallCount = 0;
-    _engineStats.triangleCount = 0;
-
-    for (auto& r : opaque_draws) {
-        generateDrawCalls(_drawCommands.opaqueRenderObejcts[r]);
+    for (auto& r : visibleOpaqueRenderObjects) 
+    {
+        generateDrawCall(cmd, _globalDescriptor, _drawCommands.opaqueRenderObejcts[r]);
     }
 
-    for (auto& r : _drawCommands.transparentRenderObejcts) {
-        generateDrawCalls(r);
-    }
-
-    // we delete the draw commands now that we processed them
     _drawCommands.opaqueRenderObejcts.clear();
+
+    auto end = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    _engineStats.forwardPassTime = elapsed.count() / 1000.f;
+}
+
+void VulkanEngine::transparentPass(VkCommandBuffer cmd)
+{
+    auto start = std::chrono::system_clock::now();
+
+    std::vector<uint32_t> visibleTransparentRenderObjects;
+    visibleTransparentRenderObjects.reserve(_drawCommands.transparentRenderObejcts.size());
+
+    // Do frustum culling based on the object's bounding box.
+    for (int i = 0; i < _drawCommands.transparentRenderObejcts.size(); i++) {
+        if (isVisible(_drawCommands.transparentRenderObejcts[i], _sceneData.viewproj)) {
+            visibleTransparentRenderObjects.push_back(i);
+        }
+    }
+
+    DescriptorWriter writer;
+    writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneDataBuffer.buffer, sizeof(GPU_sceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+
+    if (_texCache.cache.size() > 0) {
+        VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+        arraySet.descriptorCount = uint32_t(_texCache.cache.size());
+        arraySet.dstArrayElement = 0;
+        arraySet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        arraySet.dstBinding = 1;
+        arraySet.pImageInfo = _texCache.cache.data();
+        writer.writes.push_back(arraySet);
+    }
+
+    writer.updateDescriptorSets(_device, _globalDescriptor);
+
+    for (auto& r : visibleTransparentRenderObjects)
+    {
+        generateDrawCall(cmd, _globalDescriptor, _drawCommands.transparentRenderObejcts[r]);
+    }
     _drawCommands.transparentRenderObejcts.clear();
+
+    auto end = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    _engineStats.transparentPassTime = elapsed.count() / 1000.f;
 }
 
 void VulkanEngine::run()
@@ -612,7 +653,7 @@ void VulkanEngine::run()
         if (ImGui::Begin("Stats"))
         {
             ImGui::Text("frameTime %f ms", _engineStats.frameTime);
-            ImGui::Text("drawtime %f ms", _engineStats.meshDrawTime);
+            ImGui::Text("drawtime %f ms", _engineStats.forwardPassTime);
             ImGui::Text("triangles %i", _engineStats.triangleCount);
             ImGui::Text("draws %i", _engineStats.drawcallCount);
         }
@@ -1086,6 +1127,19 @@ void VulkanEngine::initSyncStructures()
             vkDestroySemaphore(_device, _frames[i]._swapchainSemaphore, nullptr);
             vkDestroySemaphore(_device, _frames[i]._renderSemaphore, nullptr);
         });
+    }
+}
+
+void VulkanEngine::initSceneData()
+{
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+        //allocate a new uniform buffer for the scene data
+        _frames[i]._sceneDataBuffer = createBuffer(sizeof(GPU_sceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+        //add it to the deletion queue of this frame so it gets deleted once its been used
+        _mainDeletionQueue.push_function([=, this]() {
+            destroyBuffer(_frames[i]._sceneDataBuffer);
+            });
     }
 }
 
