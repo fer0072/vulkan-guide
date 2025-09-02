@@ -420,18 +420,26 @@ bool isVisible(const RenderObject& obj, const glm::mat4& viewproj) {
     glm::vec3 min = { 1.5, 1.5, 1.5 };
     glm::vec3 max = { -1.5, -1.5, -1.5 };
 
+    bool anyPointInFront = false;
     for (int c = 0; c < 8; c++) {
         // project each corner into clip space
         glm::vec4 v = matrix * glm::vec4(obj.bounds.origin + (corners[c] * obj.bounds.extents), 1.f);
 
-        // perspective correction
-        v.x = v.x / v.w;
-        v.y = v.y / v.w;
-        v.z = v.z / v.w;
+        if (v.w > 0.0f)
+        {
+            anyPointInFront = true;
 
-        min = glm::min(glm::vec3 { v.x, v.y, v.z }, min);
-        max = glm::max(glm::vec3 { v.x, v.y, v.z }, max);
+            // perspective correction
+            v.x = v.x / v.w;
+            v.y = v.y / v.w;
+            v.z = v.z / v.w;
+
+            min = glm::min(glm::vec3{ v.x, v.y, v.z }, min);
+            max = glm::max(glm::vec3{ v.x, v.y, v.z }, max);
+        }
     }
+
+    if (!anyPointInFront)return false;
 
     // check the clip space box is within the view
     if (min.z > 1.f || max.z < 0.f || min.x > 1.f || max.x < -1.f || min.y > 1.f || max.y < -1.f) {
@@ -446,6 +454,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer cmd)
     std::vector<uint32_t> opaque_draws;
     opaque_draws.reserve(_drawCommands.opaqueRenderObejcts.size());
 
+    // Do frustum culling based on the object's bounding box.
     for (int i = 0; i < _drawCommands.opaqueRenderObejcts.size(); i++) {
        if (isVisible(_drawCommands.opaqueRenderObejcts[i], _sceneData.viewproj)) {
             opaque_draws.push_back(i);
