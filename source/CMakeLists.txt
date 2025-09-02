@@ -16,10 +16,11 @@ add_executable (simple-engine
   vk_descriptors.cpp
   vk_pipelines.h
   vk_pipelines.cpp
+  vk_gpuscene.h
+  vk_gpuscene.cpp
+
   camera.cpp
   camera.h
-  meshes.h
-  meshes.cpp
 )
 
 
