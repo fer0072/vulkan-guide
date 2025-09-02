@@ -52,12 +52,10 @@ vec3 calcIrradiance(vec3 nor) {
  
 void main() 
 {
-	float lightValue = max(dot(inNormal, vec3(0.3f,1.f,0.3f)), 0.1f);
+	float lightValue = max(dot(inNormal, sceneData.sunlightDirection.xyz) * sceneData.sunlightDirection.w, 0.1f);
 
-	vec3 irradiance = calcIrradiance(inNormal); 
+	vec3 irradiance = calcIrradiance(inNormal) * sceneData.ambientColor.xyz * sceneData.ambientColor.w; 
 
-
-	//vec3 color = inColor * texture(colorTex,inUV).xyz;
     int colorID = materialData.colorTexID;
     vec3 color = inColor * texture(allTextures[colorID],inUV).xyz;
 

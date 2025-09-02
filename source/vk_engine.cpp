@@ -658,6 +658,9 @@ void VulkanEngine::updateScene()
 	_sceneData.view = view;
 	_sceneData.proj = projection;
 	_sceneData.viewproj = projection * view;
+    _sceneData.sunlightDirection = glm::vec4(0.3f, 1.f, 0.3f, 1.0f);
+    _sceneData.sunlightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    _sceneData.ambientColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 
     if (_loadedScenes.count("structure"))
     {
