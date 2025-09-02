@@ -652,8 +652,10 @@ void VulkanEngine::run()
 
         if (ImGui::Begin("Stats"))
         {
-            ImGui::Text("frameTime %f ms", _engineStats.frameTime);
-            ImGui::Text("drawtime %f ms", _engineStats.forwardPassTime);
+            ImGui::Text("frameTime %.2f ms", _engineStats.frameTime);
+            ImGui::Text("shadow pass drawtime %.2f ms", _engineStats.shadowPassTime);
+            ImGui::Text("foward pass drawtime %.2f ms", _engineStats.forwardPassTime);
+            ImGui::Text("transparent pass drawtime %.2f ms", _engineStats.transparentPassTime);
             ImGui::Text("triangles %i", _engineStats.triangleCount);
             ImGui::Text("draws %i", _engineStats.drawcallCount);
         }
