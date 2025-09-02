@@ -171,7 +171,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 } };
 
-    file.descriptorPool.init(engine->_device, gltf.materials.size(), sizes);
+    file.descriptorPool.init(engine->_device, uint32_t(gltf.materials.size()), sizes);
 
     // load samplers
     for (fastgltf::Sampler& sampler : gltf.samplers) {
@@ -210,7 +210,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
         } else {
             // we failed to load, so lets give the slot a default white texture to not
             // completely break loading
-            images.push_back(engine->_errorCheckerboardImage);
+            images.push_back(*engine->_defaultImages["defaulterrorCheckerboardImage"].get());
             std::cout << "gltf failed to load texture " << image.name << std::endl;
         }
     }
@@ -246,10 +246,10 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 
         GLTFMetallic_Roughness::MaterialResources materialResources;
         // default the material textures
-        materialResources.colorImage = engine->_whiteImage;
-        materialResources.colorSampler = engine->_defaultSamplerLinear;
-        materialResources.metalRoughImage = engine->_whiteImage;
-        materialResources.metalRoughSampler = engine->_defaultSamplerLinear;
+        materialResources.colorImage = *engine->_defaultImages["defaultWhiteImage"].get();
+        materialResources.colorSampler = *engine->_defaultSamplers["defaultSamplerLinear"].get();
+        materialResources.metalRoughImage = *engine->_defaultImages["defaultWhiteImage"].get();
+        materialResources.metalRoughSampler = *engine->_defaultSamplers["defaultSamplerLinear"].get();
 
         // set the uniform buffer for the material data
         materialResources.dataBuffer = file.materialDataBuffer.buffer;
@@ -305,7 +305,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 
                 fastgltf::iterateAccessor<std::uint32_t>(gltf, indexaccessor,
                     [&](std::uint32_t idx) {
-                        indices.push_back(idx + initial_vtx);
+                        indices.push_back(idx + uint32_t(initial_vtx));
                     });
             }
 
@@ -365,7 +365,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 
             glm::vec3 minpos = vertices[initial_vtx].position;
             glm::vec3 maxpos = vertices[initial_vtx].position;
-            for (int i = initial_vtx; i < vertices.size(); i++) {
+            for (size_t i = initial_vtx; i < vertices.size(); i++) {
                 minpos = glm::min(minpos, vertices[i].position);
                 maxpos = glm::max(maxpos, vertices[i].position);
             }
@@ -436,11 +436,11 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 //< load_graph
 }
 
-void LoadedGLTF::draw(const glm::mat4& topMatrix, DrawContext& ctx)
+void LoadedGLTF::generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
 {
     // create renderables from the scenenodes
     for (auto& n : topNodes) {
-        n->draw(topMatrix, ctx);
+        n->generateRenderObject(topMatrix, ctx);
     }
 }
 
@@ -456,7 +456,7 @@ void LoadedGLTF::clearAll()
 
     for (auto& [k, v] : images) {
 
-        if (v.image == creator->_errorCheckerboardImage.image) {
+        if (v.image == creator->_defaultImages["defaulterrorCheckerboardImage"]->image) {
             // dont destroy the default images
             continue;
         }

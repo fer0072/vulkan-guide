@@ -100,7 +100,7 @@ struct DrawContext;
 
 // base class for a renderable dynamic object
 class IRenderable {
-    virtual void draw(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
+    virtual void generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
 };
 
 // implementation of a drawable scene node.
@@ -123,11 +123,11 @@ struct Node : public IRenderable {
         }
     }
 
-    virtual void draw(const glm::mat4& topMatrix, DrawContext& ctx)
+    virtual void generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
     {
-        // draw children
+        // Iterate all children nodes, generate render objects.
         for (auto& c : children) {
-            c->draw(topMatrix, ctx);
+            c->generateRenderObject(topMatrix, ctx);
         }
     }
 };

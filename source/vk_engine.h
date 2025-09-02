@@ -83,8 +83,8 @@ struct FrameData {
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 struct DrawContext {
-    std::vector<RenderObject> opaqueSurfaces;
-    std::vector<RenderObject> transparentSurfaces;
+    std::vector<RenderObject> opaqueRenderObejcts;
+    std::vector<RenderObject> transparentRenderObejcts;
 };
 
 struct EngineStats {
@@ -132,7 +132,7 @@ struct MeshNode : public Node {
 
     std::shared_ptr<MeshAsset> mesh;
 
-    virtual void draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
+    virtual void generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx) override;
 };
 struct TextureID {
     uint32_t index;
@@ -237,17 +237,11 @@ public:
     VkCommandBuffer _immCommandBuffer;
     VkCommandPool _immCommandPool;
 
-    AllocatedImage _whiteImage;
-    AllocatedImage _blackImage;
-    AllocatedImage _greyImage;
-    AllocatedImage _errorCheckerboardImage;
-
-    VkSampler _defaultSamplerLinear;
-    VkSampler _defaultSamplerNearest;
+    std::unordered_map<std::string, std::shared_ptr<AllocatedImage>> _defaultImages;
+    std::unordered_map<std::string, std::shared_ptr<VkSampler>> _defaultSamplers;
 
     TextureCache _texCache;
 
-    GPUMeshBuffers _rectangle;
     DrawContext _drawCommands;
 
     GPU_sceneData _sceneData;
@@ -262,8 +256,8 @@ public:
     std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> _loadedScenes;
     std::vector<std::shared_ptr<LoadedGLTF>> _brickadiaScene;
 
-    bool shouldResizeWindow = false;
-    bool shouldFreezeRendering = false;
+    bool _shouldResizeWindow = false;
+    bool _shouldFreezeRendering = false;
 
 private:
     void initVulkan();
@@ -290,5 +284,5 @@ private:
 
     void initImgui();
 
-    void initDefaultData();
+    void createDefaultObjects();
 };

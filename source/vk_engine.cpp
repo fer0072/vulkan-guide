@@ -70,7 +70,7 @@ void VulkanEngine::init()
 
     initPipelines();
 
-    initDefaultData();
+    createDefaultObjects();
 
     initRenderables();
 
@@ -86,52 +86,22 @@ void VulkanEngine::init()
     _mainCamera.yaw = 0;
 }
 
-void VulkanEngine::initDefaultData() {
-	std::array<Vertex, 4> rect_vertices;
-
-	rect_vertices[0].position = { 0.5,-0.5, 0 };
-	rect_vertices[1].position = { 0.5,0.5, 0 };
-	rect_vertices[2].position = { -0.5,-0.5, 0 };
-	rect_vertices[3].position = { -0.5,0.5, 0 };
-
-	rect_vertices[0].color = { 0,0, 0,1 };
-	rect_vertices[1].color = { 0.5,0.5,0.5 ,1 };
-	rect_vertices[2].color = { 1,0, 0,1 };
-	rect_vertices[3].color = { 0,1, 0,1 };
-
-	rect_vertices[0].uv_x = 1;
-	rect_vertices[0].uv_y = 0;
-	rect_vertices[1].uv_x = 0;
-	rect_vertices[1].uv_y = 0;
-	rect_vertices[2].uv_x = 1;
-	rect_vertices[2].uv_y = 1;
-	rect_vertices[3].uv_x = 0;
-	rect_vertices[3].uv_y = 1;
-
-	std::array<uint32_t, 6> rect_indices;
-
-	rect_indices[0] = 0;
-	rect_indices[1] = 1;
-	rect_indices[2] = 2;
-
-	rect_indices[3] = 2;
-	rect_indices[4] = 1;
-	rect_indices[5] = 3;
-
-	_rectangle = uploadMesh(rect_indices, rect_vertices);
-
+void VulkanEngine::createDefaultObjects() {
 	//3 default textures, white, grey, black. 1 pixel each
 	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
-	_whiteImage = createImage((void*)&white, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    AllocatedImage whiteImage = createImage((void*)&white, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
+    _defaultImages["defaultWhiteImage"] = std::make_shared<AllocatedImage>(whiteImage);
 
 	uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
-	_greyImage = createImage((void*)&grey, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    AllocatedImage greyImage = createImage((void*)&grey, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
+    _defaultImages["defaultGreyImage"] = std::make_shared<AllocatedImage>(greyImage);
 
 	uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
-	_blackImage = createImage((void*)&black, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    AllocatedImage blackImage = createImage((void*)&black, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
+    _defaultImages["defaultBlackImage"] = std::make_shared<AllocatedImage>(blackImage);
 
 	//checkerboard image
 	uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
@@ -142,35 +112,39 @@ void VulkanEngine::initDefaultData() {
 		}
 	}
 
-	_errorCheckerboardImage = createImage(pixels.data(), VkExtent3D{ 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+    AllocatedImage errorCheckerboardImage = createImage(pixels.data(), VkExtent3D{ 16, 16, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
+    _defaultImages["defaulterrorCheckerboardImage"] = std::make_shared<AllocatedImage>(errorCheckerboardImage);
 
 	VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 
+    VkSampler defaultSamplerNearest;
 	sampl.magFilter = VK_FILTER_NEAREST;
-	sampl.minFilter = VK_FILTER_NEAREST;
+	sampl.minFilter = VK_FILTER_NEAREST;   
+	vkCreateSampler(_device, &sampl, nullptr, &defaultSamplerNearest);
+    _defaultSamplers["defaultSamplerNearest"] = std::make_shared<VkSampler>(defaultSamplerNearest);
 
-	vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerNearest);
-
+    VkSampler defaultSamplerLinear;
 	sampl.magFilter = VK_FILTER_LINEAR;
 	sampl.minFilter = VK_FILTER_LINEAR;
-	vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerLinear);
+	vkCreateSampler(_device, &sampl, nullptr, &defaultSamplerLinear);
+    _defaultSamplers["defaultSamplerLinear"] = std::make_shared<VkSampler>(defaultSamplerLinear);
 
     _mainDeletionQueue.push_function([=]() {
-        vkDestroyImageView(_device, _whiteImage.imageView, nullptr);
-        vmaDestroyImage(_allocator, _whiteImage.image, _whiteImage.allocation);
+        vkDestroyImageView(_device, _defaultImages["defaultWhiteImage"]->imageView, nullptr);
+        vmaDestroyImage(_allocator, _defaultImages["defaultWhiteImage"]->image, _defaultImages["defaultWhiteImage"]->allocation);
 
-        vkDestroyImageView(_device, _greyImage.imageView, nullptr);
-        vmaDestroyImage(_allocator, _greyImage.image, _greyImage.allocation);
+        vkDestroyImageView(_device, _defaultImages["defaultGreyImage"]->imageView, nullptr);
+        vmaDestroyImage(_allocator, _defaultImages["defaultGreyImage"]->image, _defaultImages["defaultGreyImage"]->allocation);
 
-        vkDestroyImageView(_device, _blackImage.imageView, nullptr);
-        vmaDestroyImage(_allocator, _blackImage.image, _blackImage.allocation);
+        vkDestroyImageView(_device, _defaultImages["defaultBlackImage"]->imageView, nullptr);
+        vmaDestroyImage(_allocator, _defaultImages["defaultBlackImage"]->image, _defaultImages["defaultBlackImage"]->allocation);
 
-        vkDestroyImageView(_device, _errorCheckerboardImage.imageView, nullptr);
-        vmaDestroyImage(_allocator, _errorCheckerboardImage.image, _errorCheckerboardImage.allocation);
+        vkDestroyImageView(_device, _defaultImages["defaulterrorCheckerboardImage"]->imageView, nullptr);
+        vmaDestroyImage(_allocator, _defaultImages["defaulterrorCheckerboardImage"]->image, _defaultImages["defaulterrorCheckerboardImage"]->allocation);
 
-        destroyBuffer(_rectangle.indexBuffer);
-        destroyBuffer(_rectangle.vertexBuffer);
+        vkDestroySampler(_device, *_defaultSamplers["defaultSamplerNearest"].get(), nullptr);
+        vkDestroySampler(_device, *_defaultSamplers["defaultSamplerLinear"].get(), nullptr);
         });
 }
 
@@ -341,7 +315,7 @@ void VulkanEngine::draw()
 
 	VkResult e = vkAcquireNextImageKHR(_device, _swapchain, 1000000000, getCurrentFrame()._swapchainSemaphore, nullptr, &swapchainImageIndex);
 	if (e == VK_ERROR_OUT_OF_DATE_KHR) {
-        shouldResizeWindow = true;
+        _shouldResizeWindow = true;
 		return ;
 	}
 	_drawExtent.height = uint32_t(std::min(_swapchainExtent.height, _drawImage.imageExtent.height) * 1.f);
@@ -422,14 +396,14 @@ void VulkanEngine::draw()
 
 	VkResult presentResult = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
 	if (e == VK_ERROR_OUT_OF_DATE_KHR) {
-        shouldResizeWindow = true;
+        _shouldResizeWindow = true;
         return;
 	}
 	//increase the number of frames drawn
 	_frameNumber++;
 }
 
-bool is_visible(const RenderObject& obj, const glm::mat4& viewproj) {
+bool isVisible(const RenderObject& obj, const glm::mat4& viewproj) {
     std::array<glm::vec3, 8> corners {
         glm::vec3 { 1, 1, 1 },
         glm::vec3 { 1, 1, -1 },
@@ -470,16 +444,16 @@ bool is_visible(const RenderObject& obj, const glm::mat4& viewproj) {
 void VulkanEngine::drawGeometry(VkCommandBuffer cmd)
 {
     std::vector<uint32_t> opaque_draws;
-    opaque_draws.reserve(_drawCommands.opaqueSurfaces.size());
+    opaque_draws.reserve(_drawCommands.opaqueRenderObejcts.size());
 
-    for (int i = 0; i < _drawCommands.opaqueSurfaces.size(); i++) {
-       if (is_visible(_drawCommands.opaqueSurfaces[i], _sceneData.viewproj)) {
+    for (int i = 0; i < _drawCommands.opaqueRenderObejcts.size(); i++) {
+       if (isVisible(_drawCommands.opaqueRenderObejcts[i], _sceneData.viewproj)) {
             opaque_draws.push_back(i);
        }
     }
 
     //allocate a new uniform buffer for the scene data
-    AllocatedBuffer gpu_sceneDataBuffer =  createBuffer(sizeof(GPU_sceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+    AllocatedBuffer gpu_sceneDataBuffer = createBuffer(sizeof(GPU_sceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
     //add it to the deletion queue of this frame so it gets deleted once its been used
     getCurrentFrame()._deletionQueue.push_function([=,this](){
@@ -518,7 +492,7 @@ void VulkanEngine::drawGeometry(VkCommandBuffer cmd)
     MaterialInstance* lastMaterial = nullptr;
     VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
 
-    auto draw = [&](const RenderObject& r) {
+    auto generateDrawCalls = [&](const RenderObject& r) {
         if (r.material != lastMaterial) {
             lastMaterial = r.material;
             if (r.material->pipeline != lastPipeline) {
@@ -570,16 +544,16 @@ void VulkanEngine::drawGeometry(VkCommandBuffer cmd)
     _engineStats.triangleCount = 0;
 
     for (auto& r : opaque_draws) {
-        draw(_drawCommands.opaqueSurfaces[r]);
+        generateDrawCalls(_drawCommands.opaqueRenderObejcts[r]);
     }
 
-    for (auto& r : _drawCommands.transparentSurfaces) {
-        draw(r);
+    for (auto& r : _drawCommands.transparentRenderObejcts) {
+        generateDrawCalls(r);
     }
 
     // we delete the draw commands now that we processed them
-    _drawCommands.opaqueSurfaces.clear();
-    _drawCommands.transparentSurfaces.clear();
+    _drawCommands.opaqueRenderObejcts.clear();
+    _drawCommands.transparentRenderObejcts.clear();
 }
 
 void VulkanEngine::run()
@@ -600,13 +574,13 @@ void VulkanEngine::run()
             if (e.type == SDL_WINDOWEVENT) {
 
 				if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
-                    shouldResizeWindow = true;
+                    _shouldResizeWindow = true;
 				}
 				if (e.window.event == SDL_WINDOWEVENT_MINIMIZED) {
-					shouldFreezeRendering = true;
+					_shouldFreezeRendering = true;
 				}
 				if (e.window.event == SDL_WINDOWEVENT_RESTORED) {
-					shouldFreezeRendering = false;
+					_shouldFreezeRendering = false;
 				}
             }
             
@@ -614,9 +588,9 @@ void VulkanEngine::run()
             _mainCamera.processInputEvent(&e);
         }
 
-        if (shouldFreezeRendering) continue;
+        if (_shouldFreezeRendering) continue;
 
-		if (shouldResizeWindow) {
+		if (_shouldResizeWindow) {
 			resizeSwapchain();
 		}
 
@@ -670,12 +644,7 @@ void VulkanEngine::updateScene()
 
 	glm::mat4 view = _mainCamera.getViewMatrix();
 
-	// camera projection
-	glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_windowExtent.width / (float)_windowExtent.height, 10000.f, 0.1f);
-
-	// invert the Y direction on projection matrix so that we are more similar
-	// to opengl and gltf axis
-	projection[1][1] *= -1;
+    glm::mat4 projection = _mainCamera.getProjectionMatrix();
 
 	_sceneData.view = view;
 	_sceneData.proj = projection;
@@ -683,7 +652,7 @@ void VulkanEngine::updateScene()
 
     if (_loadedScenes.count("structure"))
     {
-        _loadedScenes["structure"]->draw(glm::mat4{ 1.f }, _drawCommands);
+        _loadedScenes["structure"]->generateRenderObject(glm::mat4{ 1.f }, _drawCommands);
     }
 }
 
@@ -1048,7 +1017,7 @@ void VulkanEngine::resizeSwapchain()
 
 	createSwapchain(_windowExtent.width, _windowExtent.height);
 
-	shouldResizeWindow = false;
+	_shouldResizeWindow = false;
 }
 
 void VulkanEngine::initCommands()
@@ -1357,7 +1326,7 @@ MaterialInstance GLTFMetallic_Roughness::updateMaterialDescriptorSets(VkDevice d
     return matData;
 }
 
-void MeshNode::draw(const glm::mat4& topMatrix, DrawContext& ctx)
+void MeshNode::generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
 {
     glm::mat4 nodeMatrix = topMatrix * worldTransform;
 
@@ -1372,14 +1341,14 @@ void MeshNode::draw(const glm::mat4& topMatrix, DrawContext& ctx)
         def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
 
         if (s.material->data.passType == MaterialPass::transparent) {
-            ctx.transparentSurfaces.push_back(def);
+            ctx.transparentRenderObejcts.push_back(def);
         } else {
-            ctx.opaqueSurfaces.push_back(def);
+            ctx.opaqueRenderObejcts.push_back(def);
         }
     }
 
     // recurse down
-    Node::draw(topMatrix, ctx);
+    Node::generateRenderObject(topMatrix, ctx);
 }
 
 
