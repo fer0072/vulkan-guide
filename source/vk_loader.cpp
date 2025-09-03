@@ -292,6 +292,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
         for (auto&& p : mesh.primitives) {
             GeoSurface newSurface;
             newSurface.startIndex = (uint32_t)indices.size();
+            newSurface.startVertex = (uint32_t)vertices.size();
             newSurface.count = (uint32_t)gltf.accessors[p.indicesAccessor.value()].count;
 
             size_t initial_vtx = vertices.size();
@@ -434,11 +435,11 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 //< load_graph
 }
 
-void LoadedGLTF::generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
+void LoadedGLTF::generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene)
 {
     // create renderables from the scenenodes
     for (auto& n : topNodes) {
-        n->generateRenderObject(topMatrix, ctx);
+        n->generateRenderObject(topMatrix, scene);
     }
 }
 

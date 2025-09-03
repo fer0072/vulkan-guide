@@ -299,8 +299,8 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
     _globalDescriptor = getCurrentFrame()._frameDescriptors.allocate(_device, _gpu_sceneDataDescriptorLayout, &allocArrayInfo);
 
     shadowPass(cmd);
-    forwardPass(cmd);
-    transparentPass(cmd);
+    //forwardPass(cmd);
+    //transparentPass(cmd);
 
 	vkCmdEndRendering(cmd);
 }
@@ -347,6 +347,17 @@ void VulkanEngine::draw()
 	VkCommandBufferBeginInfo cmdBeginInfo = vkInit::commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+
+
+
+
+
+
+
+
+
+
+
 
 	// transition our main draw image into general layout so we can write into it
 	// we will overwrite it all so we dont care about what was the older layout
@@ -463,148 +474,148 @@ bool isVisible(const RenderObject& obj, const glm::mat4& viewproj) {
     }
 }
 
-void VulkanEngine::generateDrawCall(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor, const RenderObject& renderObject)
-{
-    MaterialPipeline* lastPipeline = nullptr;
-    MaterialInstance* lastMaterial = nullptr;
-    VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
-
-    if (renderObject.material != lastMaterial) {
-        lastMaterial = renderObject.material;
-        if (renderObject.material->pipeline != lastPipeline) {
-
-            lastPipeline = renderObject.material->pipeline;
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->pipeline);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 0, 1,
-                &globalDescriptor, 0, nullptr);
-
-            VkViewport viewport = {};
-            viewport.x = 0;
-            viewport.y = 0;
-            viewport.width = (float)_drawExtent.width;
-            viewport.height = (float)_drawExtent.height;
-            viewport.minDepth = 0.f;
-            viewport.maxDepth = 1.f;
-
-            vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-            VkRect2D scissor = {};
-            scissor.offset.x = 0;
-            scissor.offset.y = 0;
-            scissor.extent.width = _drawExtent.width;
-            scissor.extent.height = _drawExtent.height;
-
-            vkCmdSetScissor(cmd, 0, 1, &scissor);
-        }
-
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 1, 1,
-            &renderObject.material->materialSet, 0, nullptr);
-    }
-        
-    if (renderObject.indexBuffer != lastIndexBuffer) {
-        lastIndexBuffer = renderObject.indexBuffer;
-        vkCmdBindIndexBuffer(cmd, renderObject.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-    }
-
-    // calculate final mesh matrix
-    GPUDrawPushConstants push_constants;
-    push_constants.worldMatrix = renderObject.transform;
-    push_constants.vertexBuffer = renderObject.vertexBufferAddress;
-    
-    vkCmdPushConstants(cmd, renderObject.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
-
-    _engineStats.drawcallCount++;
-    _engineStats.triangleCount += renderObject.indexCount / 3;
-    vkCmdDrawIndexed(cmd, renderObject.indexCount, 1, renderObject.firstIndex, 0, 0);
-}
+//void VulkanEngine::generateDrawCall(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor, const RenderObject& renderObject)
+//{
+//    MaterialPipeline* lastPipeline = nullptr;
+//    MaterialInstance* lastMaterial = nullptr;
+//    VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
+//
+//    if (renderObject.material != lastMaterial) {
+//        lastMaterial = renderObject.material;
+//        if (renderObject.material->pipeline != lastPipeline) {
+//
+//            lastPipeline = renderObject.material->pipeline;
+//            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->pipeline);
+//            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 0, 1,
+//                &globalDescriptor, 0, nullptr);
+//
+//            VkViewport viewport = {};
+//            viewport.x = 0;
+//            viewport.y = 0;
+//            viewport.width = (float)_drawExtent.width;
+//            viewport.height = (float)_drawExtent.height;
+//            viewport.minDepth = 0.f;
+//            viewport.maxDepth = 1.f;
+//
+//            vkCmdSetViewport(cmd, 0, 1, &viewport);
+//
+//            VkRect2D scissor = {};
+//            scissor.offset.x = 0;
+//            scissor.offset.y = 0;
+//            scissor.extent.width = _drawExtent.width;
+//            scissor.extent.height = _drawExtent.height;
+//
+//            vkCmdSetScissor(cmd, 0, 1, &scissor);
+//        }
+//
+//        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 1, 1,
+//            &renderObject.material->materialSet, 0, nullptr);
+//    }
+//        
+//    if (renderObject.indexBuffer != lastIndexBuffer) {
+//        lastIndexBuffer = renderObject.indexBuffer;
+//        vkCmdBindIndexBuffer(cmd, renderObject.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+//    }
+//
+//    // calculate final mesh matrix
+//    GPUDrawPushConstants push_constants;
+//    push_constants.worldMatrix = renderObject.transform;
+//    push_constants.vertexBuffer = renderObject.vertexBufferAddress;
+//    
+//    vkCmdPushConstants(cmd, renderObject.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+//
+//    _engineStats.drawcallCount++;
+//    _engineStats.triangleCount += renderObject.indexCount / 3;
+//    vkCmdDrawIndexed(cmd, renderObject.indexCount, 1, renderObject.firstIndex, 0, 0);
+//}
 
 void VulkanEngine::shadowPass(VkCommandBuffer cmd)
 {
 
 }
 
-void VulkanEngine::forwardPass(VkCommandBuffer cmd)
-{
-    auto start = std::chrono::system_clock::now();
-
-    std::vector<uint32_t> visibleOpaqueRenderObjects;
-    visibleOpaqueRenderObjects.reserve(_drawCommands.opaqueRenderObejcts.size());
-
-    // Do frustum culling based on the object's bounding box.
-    for (int i = 0; i < _drawCommands.opaqueRenderObejcts.size(); i++) {
-       if (isVisible(_drawCommands.opaqueRenderObejcts[i], _sceneData.viewproj)) {
-            visibleOpaqueRenderObjects.push_back(i);
-       }
-    }
-
-	DescriptorWriter writer;
-	writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneDataBuffer.buffer, sizeof(GPU_sceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-
-    if (_texCache.cache.size() > 0) {
-		VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-		arraySet.descriptorCount = uint32_t(_texCache.cache.size());
-		arraySet.dstArrayElement = 0;
-		arraySet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		arraySet.dstBinding = 1;
-		arraySet.pImageInfo = _texCache.cache.data();
-		writer.writes.push_back(arraySet);
-    }
-
-	writer.updateDescriptorSets(_device, _globalDescriptor);
-
-    for (auto& r : visibleOpaqueRenderObjects) 
-    {
-        generateDrawCall(cmd, _globalDescriptor, _drawCommands.opaqueRenderObejcts[r]);
-    }
-
-    _drawCommands.opaqueRenderObejcts.clear();
-
-    auto end = std::chrono::system_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-    _engineStats.forwardPassTime = elapsed.count() / 1000.f;
-}
-
-void VulkanEngine::transparentPass(VkCommandBuffer cmd)
-{
-    auto start = std::chrono::system_clock::now();
-
-    std::vector<uint32_t> visibleTransparentRenderObjects;
-    visibleTransparentRenderObjects.reserve(_drawCommands.transparentRenderObejcts.size());
-
-    // Do frustum culling based on the object's bounding box.
-    for (int i = 0; i < _drawCommands.transparentRenderObejcts.size(); i++) {
-        if (isVisible(_drawCommands.transparentRenderObejcts[i], _sceneData.viewproj)) {
-            visibleTransparentRenderObjects.push_back(i);
-        }
-    }
-
-    DescriptorWriter writer;
-    writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneDataBuffer.buffer, sizeof(GPU_sceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-
-    if (_texCache.cache.size() > 0) {
-        VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-        arraySet.descriptorCount = uint32_t(_texCache.cache.size());
-        arraySet.dstArrayElement = 0;
-        arraySet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        arraySet.dstBinding = 1;
-        arraySet.pImageInfo = _texCache.cache.data();
-        writer.writes.push_back(arraySet);
-    }
-
-    writer.updateDescriptorSets(_device, _globalDescriptor);
-
-    for (auto& r : visibleTransparentRenderObjects)
-    {
-        generateDrawCall(cmd, _globalDescriptor, _drawCommands.transparentRenderObejcts[r]);
-    }
-    _drawCommands.transparentRenderObejcts.clear();
-
-    auto end = std::chrono::system_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-    _engineStats.transparentPassTime = elapsed.count() / 1000.f;
-}
+//void VulkanEngine::forwardPass(VkCommandBuffer cmd)
+//{
+//    auto start = std::chrono::system_clock::now();
+//
+//    std::vector<uint32_t> visibleOpaqueRenderObjects;
+//    visibleOpaqueRenderObjects.reserve(_renderScene.drawContext.opaqueRenderObejcts.size());
+//
+//    // Do frustum culling based on the object's bounding box.
+//    for (int i = 0; i < _renderScene.drawContext.opaqueRenderObejcts.size(); i++) {
+//       if (isVisible(_renderScene.drawContext.opaqueRenderObejcts[i], _sceneData.viewproj)) {
+//            visibleOpaqueRenderObjects.push_back(i);
+//       }
+//    }
+//
+//	DescriptorWriter writer;
+//	writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneDataBuffer.buffer, sizeof(GPU_sceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+//
+//    if (_texCache.cache.size() > 0) {
+//		VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+//		arraySet.descriptorCount = uint32_t(_texCache.cache.size());
+//		arraySet.dstArrayElement = 0;
+//		arraySet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+//		arraySet.dstBinding = 1;
+//		arraySet.pImageInfo = _texCache.cache.data();
+//		writer.writes.push_back(arraySet);
+//    }
+//
+//	writer.updateDescriptorSets(_device, _globalDescriptor);
+//
+//    for (auto& r : visibleOpaqueRenderObjects) 
+//    {
+//        generateDrawCall(cmd, _globalDescriptor, _renderScene.drawContext.opaqueRenderObejcts[r]);
+//    }
+//
+//    _renderScene.drawContext.opaqueRenderObejcts.clear();
+//
+//    auto end = std::chrono::system_clock::now();
+//    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+//
+//    _engineStats.forwardPassTime = elapsed.count() / 1000.f;
+//}
+//
+//void VulkanEngine::transparentPass(VkCommandBuffer cmd)
+//{
+//    auto start = std::chrono::system_clock::now();
+//
+//    std::vector<uint32_t> visibleTransparentRenderObjects;
+//    visibleTransparentRenderObjects.reserve(_renderScene.drawContext.transparentRenderObejcts.size());
+//
+//    // Do frustum culling based on the object's bounding box.
+//    for (int i = 0; i < _renderScene.drawContext.transparentRenderObejcts.size(); i++) {
+//        if (isVisible(_renderScene.drawContext.transparentRenderObejcts[i], _sceneData.viewproj)) {
+//            visibleTransparentRenderObjects.push_back(i);
+//        }
+//    }
+//
+//    DescriptorWriter writer;
+//    writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneDataBuffer.buffer, sizeof(GPU_sceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+//
+//    if (_texCache.cache.size() > 0) {
+//        VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+//        arraySet.descriptorCount = uint32_t(_texCache.cache.size());
+//        arraySet.dstArrayElement = 0;
+//        arraySet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+//        arraySet.dstBinding = 1;
+//        arraySet.pImageInfo = _texCache.cache.data();
+//        writer.writes.push_back(arraySet);
+//    }
+//
+//    writer.updateDescriptorSets(_device, _globalDescriptor);
+//
+//    for (auto& r : visibleTransparentRenderObjects)
+//    {
+//        generateDrawCall(cmd, _globalDescriptor, _renderScene.drawContext.transparentRenderObejcts[r]);
+//    }
+//    _renderScene.drawContext.transparentRenderObejcts.clear();
+//
+//    auto end = std::chrono::system_clock::now();
+//    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+//
+//    _engineStats.transparentPassTime = elapsed.count() / 1000.f;
+//}
 
 void VulkanEngine::run()
 {
@@ -707,7 +718,7 @@ void VulkanEngine::updateScene()
 
     if (_loadedScenes.count("structure"))
     {
-        _loadedScenes["structure"]->generateRenderObject(glm::mat4{ 1.f }, _drawCommands);
+        _loadedScenes["structure"]->generateRenderObject(glm::mat4{ 1.f }, _renderScene);
     }
 }
 
@@ -812,10 +823,13 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
     const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 
     GPUMeshBuffers newSurface;
+
+	newSurface.original = std::make_shared<OriginalMesh>();
+    newSurface.original->_indices = std::vector(indices.begin(), indices.end());
+    newSurface.original->_vertices = std::vector(vertices.begin(), vertices.end());
     
     newSurface.vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VMA_MEMORY_USAGE_GPU_ONLY);
-
 
     VkBufferDeviceAddressInfo deviceAdressInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,.buffer = newSurface.vertexBuffer.buffer};
     newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_device, &deviceAdressInfo);
@@ -1394,29 +1408,21 @@ MaterialInstance GLTFMetallic_Roughness::updateMaterialDescriptorSets(VkDevice d
     return matData;
 }
 
-void MeshNode::generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
+void MeshNode::generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene)
 {
     glm::mat4 nodeMatrix = topMatrix * worldTransform;
 
     for (auto& s : mesh->surfaces) {
-        RenderObject def;
-        def.indexCount = s.count;
-        def.firstIndex = s.startIndex;
-        def.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
-        def.material = &s.material->data;
-        def.bounds = s.bounds;
-        def.transform = nodeMatrix;
-        def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
+        RenderObject newObject;
+        newObject.material = &s.material->data;
+        newObject.bounds = s.bounds;
+        newObject.transform = nodeMatrix;
+        newObject.meshID = scene.getMeshHandle(s, mesh->meshBuffers.original);
 
-        if (s.material->data.passType == MaterialPass::transparent) {
-            ctx.transparentRenderObejcts.push_back(def);
-        } else {
-            ctx.opaqueRenderObejcts.push_back(def);
-        }
     }
 
     // recurse down
-    Node::generateRenderObject(topMatrix, ctx);
+    Node::generateRenderObject(topMatrix, scene);
 }
 
 

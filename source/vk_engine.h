@@ -18,6 +18,10 @@
 #include <vk_descriptors.h>
 #include <vk_loader.h>
 #include <vk_pipelines.h>
+#include <vk_scene.h>
+
+constexpr unsigned int FRAME_OVERLAP = 2;
+
 struct MeshAsset;
 namespace fastgltf {
 struct Mesh;
@@ -58,17 +62,6 @@ struct ComputeEffect {
     ComputePushConstants data;
 };
 
-struct RenderObject {
-    uint32_t indexCount;
-    uint32_t firstIndex;
-    VkBuffer indexBuffer;
-
-    MaterialInstance* material;
-    Bounds bounds;
-    glm::mat4 transform;
-    VkDeviceAddress vertexBufferAddress;
-};
-
 struct FrameData {
     VkSemaphore _swapchainSemaphore, _renderSemaphore;
     VkFence _renderFence;
@@ -80,13 +73,6 @@ struct FrameData {
     VkCommandBuffer _mainCommandBuffer;
 
     AllocatedBuffer _sceneDataBuffer;
-};
-
-constexpr unsigned int FRAME_OVERLAP = 2;
-
-struct DrawContext {
-    std::vector<RenderObject> opaqueRenderObejcts;
-    std::vector<RenderObject> transparentRenderObejcts;
 };
 
 struct EngineStats {
@@ -136,8 +122,9 @@ struct MeshNode : public Node {
 
     std::shared_ptr<MeshAsset> mesh;
 
-    virtual void generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx) override;
+    virtual void generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene) override;
 };
+
 struct TextureID {
     uint32_t index;
 };
@@ -162,6 +149,7 @@ public:
 
     // draw loop
     void draw();
+    void prepareMeshData(VkCommandBuffer cmd);
     void drawMain(VkCommandBuffer cmd);
     void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView);
 
@@ -251,7 +239,7 @@ public:
 
     TextureCache _texCache;
 
-    DrawContext _drawCommands;
+	RenderScene _renderScene;
 
     GPU_sceneData _sceneData;
 

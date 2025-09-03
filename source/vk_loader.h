@@ -23,6 +23,7 @@ struct GLTFMaterial {
 
 struct GeoSurface {
     uint32_t startIndex;
+    uint32_t startVertex;
     uint32_t count;
     Bounds bounds;
 	std::shared_ptr<GLTFMaterial> material;
@@ -56,7 +57,7 @@ struct LoadedGLTF : public IRenderable {
 
     ~LoadedGLTF() { clearAll(); };
 
-    virtual void generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx);
+    virtual void generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene);
 
 private:
 

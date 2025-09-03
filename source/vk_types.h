@@ -56,11 +56,43 @@ struct GPU_sceneData {
 
 //> mat_types
 enum class MaterialPass :uint8_t {
-    shadow,
-    mainColor,
-    transparent,
+    shadow = 0,
+    mainColor = 1,
+    transparent = 2,
     other
 };
+
+template<typename T>
+struct PerPassData
+{
+public:
+    T& operator[](MaterialPass pass)
+    {
+        switch (pass)
+        {
+        case MaterialPass::shadow:
+            return data[0];
+        case MaterialPass::mainColor:
+            return data[1];
+        case MaterialPass::transparent:
+            return data[2];
+        }
+        assert(false);
+        return data[0];
+    };
+
+    void clear(T&& val)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            data[i] = val;
+        }
+    }
+
+private:
+    std::array<T, 3> data;
+};
+
 struct MaterialPipeline {
 	VkPipeline pipeline;
 	VkPipelineLayout layout;
@@ -81,12 +113,21 @@ struct Vertex {
 	glm::vec4 color;
 };
 
+struct OriginalMesh
+{
+    std::vector<Vertex> _vertices;
+    std::vector<uint32_t> _indices;
+};
+
 // holds the resources needed for a mesh
 struct GPUMeshBuffers {
-
+    
     AllocatedBuffer indexBuffer;
     AllocatedBuffer vertexBuffer;
+    //TBD
     VkDeviceAddress vertexBufferAddress;
+
+    std::shared_ptr<OriginalMesh> original;
 };
 
 // push constants for our mesh object draws
@@ -97,11 +138,11 @@ struct GPUDrawPushConstants {
 //< vbuf_types
 
 //> node_types
-struct DrawContext;
+class RenderScene;
 
 // base class for a renderable dynamic object
 class IRenderable {
-    virtual void generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
+    virtual void generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene) = 0;
 };
 
 // implementation of a drawable scene node.
@@ -124,11 +165,11 @@ struct Node : public IRenderable {
         }
     }
 
-    virtual void generateRenderObject(const glm::mat4& topMatrix, DrawContext& ctx)
+    virtual void generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene)
     {
         // Iterate all children nodes, generate render objects.
         for (auto& c : children) {
-            c->generateRenderObject(topMatrix, ctx);
+            c->generateRenderObject(topMatrix, scene);
         }
     }
 };
