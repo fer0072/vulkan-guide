@@ -56,6 +56,7 @@ struct GPU_sceneData {
 
 //> mat_types
 enum class MaterialPass :uint8_t {
+    shadow,
     mainColor,
     transparent,
     other

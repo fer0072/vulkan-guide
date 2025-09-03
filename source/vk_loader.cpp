@@ -166,7 +166,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
         std::cerr << "Failed to determine glTF container" << std::endl;
         return {};
     }
-    // we can stimate the descriptors we will need accurately
+    // we can estimate the descriptors we will need accurately
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 } };
@@ -261,8 +261,6 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 
             materialResources.colorImage = images[img];
             materialResources.colorSampler = file.samplers[sampler];
-
-
         }
 
 		constants.colorTexID = engine->_texCache.addTexture(materialResources.colorImage.imageView, materialResources.colorSampler).index;
