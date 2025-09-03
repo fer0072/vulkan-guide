@@ -239,9 +239,9 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
         constants.metal_rough_factors.y = mat.pbrData.roughnessFactor;
        
 
-        MaterialPass passType = MaterialPass::mainColor;
+        MaterialPass passType = MaterialPass::forwardOpaque;
         if (mat.alphaMode == fastgltf::AlphaMode::Blend) {
-            passType = MaterialPass::transparent;
+            passType = MaterialPass::forwardTransparent;
         }
 
         GLTFMetallic_Roughness::MaterialResources materialResources;

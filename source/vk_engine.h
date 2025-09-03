@@ -155,8 +155,8 @@ public:
 
     void generateDrawCall(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor, const RenderObject& renderObject);
     void shadowPass(VkCommandBuffer cmd);
-    void forwardPass(VkCommandBuffer cmd);
-    void transparentPass(VkCommandBuffer cmd);
+    void forwardOpaquePass(VkCommandBuffer cmd);
+    void forwardTransparentPass(VkCommandBuffer cmd);
 
     // run main loop
     void run();

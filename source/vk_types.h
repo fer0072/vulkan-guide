@@ -57,8 +57,8 @@ struct GPU_sceneData {
 //> mat_types
 enum class MaterialPass :uint8_t {
     shadow = 0,
-    mainColor = 1,
-    transparent = 2,
+    forwardOpaque = 1,
+    forwardTransparent = 2,
     other
 };
 
@@ -72,9 +72,9 @@ public:
         {
         case MaterialPass::shadow:
             return data[0];
-        case MaterialPass::mainColor:
+        case MaterialPass::forwardOpaque:
             return data[1];
-        case MaterialPass::transparent:
+        case MaterialPass::forwardTransparent:
             return data[2];
         }
         assert(false);

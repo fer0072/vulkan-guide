@@ -77,6 +77,8 @@ void VulkanEngine::init()
 
     initImgui();
 
+    _renderScene.buildBatches();
+
     // everything went fine
     _isInitialized = true;
 
@@ -298,9 +300,9 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
 
     _globalDescriptor = getCurrentFrame()._frameDescriptors.allocate(_device, _gpu_sceneDataDescriptorLayout, &allocArrayInfo);
 
-    shadowPass(cmd);
-    //forwardPass(cmd);
-    //transparentPass(cmd);
+    //shadowPass(cmd);
+    forwardOpaquePass(cmd);
+    //forwardTransparentPass(cmd);
 
 	vkCmdEndRendering(cmd);
 }
@@ -348,7 +350,7 @@ void VulkanEngine::draw()
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-
+    _renderScene.buildBatches();
 
 
 
@@ -474,109 +476,116 @@ bool isVisible(const RenderObject& obj, const glm::mat4& viewproj) {
     }
 }
 
-//void VulkanEngine::generateDrawCall(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor, const RenderObject& renderObject)
-//{
-//    MaterialPipeline* lastPipeline = nullptr;
-//    MaterialInstance* lastMaterial = nullptr;
-//    VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
-//
-//    if (renderObject.material != lastMaterial) {
-//        lastMaterial = renderObject.material;
-//        if (renderObject.material->pipeline != lastPipeline) {
-//
-//            lastPipeline = renderObject.material->pipeline;
-//            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->pipeline);
-//            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 0, 1,
-//                &globalDescriptor, 0, nullptr);
-//
-//            VkViewport viewport = {};
-//            viewport.x = 0;
-//            viewport.y = 0;
-//            viewport.width = (float)_drawExtent.width;
-//            viewport.height = (float)_drawExtent.height;
-//            viewport.minDepth = 0.f;
-//            viewport.maxDepth = 1.f;
-//
-//            vkCmdSetViewport(cmd, 0, 1, &viewport);
-//
-//            VkRect2D scissor = {};
-//            scissor.offset.x = 0;
-//            scissor.offset.y = 0;
-//            scissor.extent.width = _drawExtent.width;
-//            scissor.extent.height = _drawExtent.height;
-//
-//            vkCmdSetScissor(cmd, 0, 1, &scissor);
-//        }
-//
-//        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 1, 1,
-//            &renderObject.material->materialSet, 0, nullptr);
-//    }
-//        
-//    if (renderObject.indexBuffer != lastIndexBuffer) {
-//        lastIndexBuffer = renderObject.indexBuffer;
-//        vkCmdBindIndexBuffer(cmd, renderObject.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-//    }
-//
-//    // calculate final mesh matrix
-//    GPUDrawPushConstants push_constants;
-//    push_constants.worldMatrix = renderObject.transform;
-//    push_constants.vertexBuffer = renderObject.vertexBufferAddress;
-//    
-//    vkCmdPushConstants(cmd, renderObject.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
-//
-//    _engineStats.drawcallCount++;
-//    _engineStats.triangleCount += renderObject.indexCount / 3;
-//    vkCmdDrawIndexed(cmd, renderObject.indexCount, 1, renderObject.firstIndex, 0, 0);
-//}
+void VulkanEngine::generateDrawCall(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor, const RenderObject& renderObject)
+{
+    MaterialPipeline* lastPipeline = nullptr;
+    MaterialInstance* lastMaterial = nullptr;
+    VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
+
+    if (renderObject.material.get() != lastMaterial) {
+        lastMaterial = renderObject.material.get();
+        if (renderObject.material->pipeline != lastPipeline) {
+
+            lastPipeline = renderObject.material->pipeline;
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->pipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 0, 1,
+                &globalDescriptor, 0, nullptr);
+
+            VkViewport viewport = {};
+            viewport.x = 0;
+            viewport.y = 0;
+            viewport.width = (float)_drawExtent.width;
+            viewport.height = (float)_drawExtent.height;
+            viewport.minDepth = 0.f;
+            viewport.maxDepth = 1.f;
+
+            vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+            VkRect2D scissor = {};
+            scissor.offset.x = 0;
+            scissor.offset.y = 0;
+            scissor.extent.width = _drawExtent.width;
+            scissor.extent.height = _drawExtent.height;
+
+            vkCmdSetScissor(cmd, 0, 1, &scissor);
+        }
+
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderObject.material->pipeline->layout, 1, 1,
+            &renderObject.material->materialSet, 0, nullptr);
+    }
+        
+    if (renderObject.indexBuffer != lastIndexBuffer) {
+        lastIndexBuffer = renderObject.indexBuffer;
+        vkCmdBindIndexBuffer(cmd, renderObject.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    }
+
+    // calculate final mesh matrix
+    GPUDrawPushConstants push_constants;
+    push_constants.worldMatrix = renderObject.transform;
+    push_constants.vertexBuffer = renderObject.vertexBufferAddress;
+    
+    vkCmdPushConstants(cmd, renderObject.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
+
+    _engineStats.drawcallCount++;
+    _engineStats.triangleCount += renderObject.indexCount / 3;
+    vkCmdDrawIndexed(cmd, renderObject.indexCount, 1, renderObject.firstIndex, 0, 0);
+}
 
 void VulkanEngine::shadowPass(VkCommandBuffer cmd)
 {
 
 }
 
-//void VulkanEngine::forwardPass(VkCommandBuffer cmd)
-//{
-//    auto start = std::chrono::system_clock::now();
-//
-//    std::vector<uint32_t> visibleOpaqueRenderObjects;
-//    visibleOpaqueRenderObjects.reserve(_renderScene.drawContext.opaqueRenderObejcts.size());
-//
-//    // Do frustum culling based on the object's bounding box.
-//    for (int i = 0; i < _renderScene.drawContext.opaqueRenderObejcts.size(); i++) {
-//       if (isVisible(_renderScene.drawContext.opaqueRenderObejcts[i], _sceneData.viewproj)) {
-//            visibleOpaqueRenderObjects.push_back(i);
-//       }
-//    }
-//
-//	DescriptorWriter writer;
-//	writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneDataBuffer.buffer, sizeof(GPU_sceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-//
-//    if (_texCache.cache.size() > 0) {
-//		VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-//		arraySet.descriptorCount = uint32_t(_texCache.cache.size());
-//		arraySet.dstArrayElement = 0;
-//		arraySet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-//		arraySet.dstBinding = 1;
-//		arraySet.pImageInfo = _texCache.cache.data();
-//		writer.writes.push_back(arraySet);
-//    }
-//
-//	writer.updateDescriptorSets(_device, _globalDescriptor);
-//
-//    for (auto& r : visibleOpaqueRenderObjects) 
-//    {
-//        generateDrawCall(cmd, _globalDescriptor, _renderScene.drawContext.opaqueRenderObejcts[r]);
-//    }
-//
-//    _renderScene.drawContext.opaqueRenderObejcts.clear();
-//
-//    auto end = std::chrono::system_clock::now();
-//    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-//
-//    _engineStats.forwardPassTime = elapsed.count() / 1000.f;
-//}
-//
-//void VulkanEngine::transparentPass(VkCommandBuffer cmd)
+void VulkanEngine::forwardOpaquePass(VkCommandBuffer cmd)
+{
+    auto start = std::chrono::system_clock::now();
+
+    std::vector<uint32_t> visibleOpaqueRenderObjects;
+    visibleOpaqueRenderObjects.reserve(_renderScene.forwardOpaquePass.flatBatches.size());
+
+    // Do frustum culling based on the object's bounding box.
+    for (int i = 0; i < _renderScene.forwardOpaquePass.flatBatches.size(); i++) {
+        RenderScene::PassObject* passObject = _renderScene.forwardOpaquePass.get(_renderScene.forwardOpaquePass.flatBatches[i].object);
+
+        RenderObject* renderObject = _renderScene.getRenderObject(passObject->original);
+        if (isVisible(*renderObject, _sceneData.viewproj)) {
+            visibleOpaqueRenderObjects.push_back(i);
+        }
+    }
+
+	DescriptorWriter writer;
+	writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneDataBuffer.buffer, sizeof(GPU_sceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+
+    if (_texCache.cache.size() > 0) {
+		VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+		arraySet.descriptorCount = uint32_t(_texCache.cache.size());
+		arraySet.dstArrayElement = 0;
+		arraySet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		arraySet.dstBinding = 1;
+		arraySet.pImageInfo = _texCache.cache.data();
+		writer.writes.push_back(arraySet);
+    }
+
+	writer.updateDescriptorSets(_device, _globalDescriptor);
+
+    for (auto& r : visibleOpaqueRenderObjects) 
+    {
+        RenderScene::PassObject* passObject = _renderScene.forwardOpaquePass.get(_renderScene.forwardOpaquePass.flatBatches[r].object);
+
+        RenderObject* renderObject = _renderScene.getRenderObject(passObject->original);
+
+        generateDrawCall(cmd, _globalDescriptor, *renderObject);
+    }
+
+    _renderScene.forwardOpaquePass.flatBatches.clear();
+
+    auto end = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    _engineStats.forwardPassTime = elapsed.count() / 1000.f;
+}
+
+//void VulkanEngine::forwardTransparentPass(VkCommandBuffer cmd)
 //{
 //    auto start = std::chrono::system_clock::now();
 //
@@ -666,7 +675,7 @@ void VulkanEngine::run()
             ImGui::Text("frameTime %.2f ms", _engineStats.frameTime);
             ImGui::Text("shadow pass drawtime %.2f ms", _engineStats.shadowPassTime);
             ImGui::Text("foward pass drawtime %.2f ms", _engineStats.forwardPassTime);
-            ImGui::Text("transparent pass drawtime %.2f ms", _engineStats.transparentPassTime);
+            ImGui::Text("forwardTransparent pass drawtime %.2f ms", _engineStats.transparentPassTime);
             ImGui::Text("triangles %i", _engineStats.triangleCount);
             ImGui::Text("draws %i", _engineStats.drawcallCount);
         }
@@ -1370,7 +1379,7 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	// finally build the pipeline
     opaquePipeline.pipeline = pipelineBuilder.buildPipeline(engine->_device);
 
-	// create the transparent variant
+	// create the forwardTransparent variant
 	pipelineBuilder.enableBlendingAdditive();
 
 	pipelineBuilder.enableDepthTest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
@@ -1390,7 +1399,7 @@ MaterialInstance GLTFMetallic_Roughness::updateMaterialDescriptorSets(VkDevice d
 {
     MaterialInstance matData;
 	matData.passType = pass;
-	if (pass == MaterialPass::transparent) {
+	if (pass == MaterialPass::forwardTransparent) {
 		matData.pipeline = &transparentPipeline;
 	}
 	else {
@@ -1413,14 +1422,36 @@ void MeshNode::generateRenderObject(const glm::mat4& topMatrix, RenderScene& sce
     glm::mat4 nodeMatrix = topMatrix * worldTransform;
 
     for (auto& s : mesh->surfaces) {
+        // TBD
         RenderObject newObject;
-        newObject.material = &s.material->data;
+        newObject.indexCount = s.count;
+        newObject.firstIndex = s.startIndex;
+        newObject.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
+        newObject.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
+        newObject.material = std::make_shared<MaterialInstance>(s.material->data);
         newObject.bounds = s.bounds;
         newObject.transform = nodeMatrix;
         newObject.meshID = scene.getMeshHandle(s, mesh->meshBuffers.original);
+        newObject.updateIndex = (uint32_t)-1;
+        newObject.passIndices.clear(-1);
+        Handle<RenderObject> handle;
+        handle.handle = static_cast<uint32_t>(scene.renderables.size());
 
+        scene.renderables.push_back(newObject);
+
+        if (s.material->data.passType == MaterialPass::forwardTransparent) 
+        {
+            scene.forwardTransparentPass.unbatchedObjects.push_back(handle);
+        }
+        else 
+        {
+			scene.forwardOpaquePass.unbatchedObjects.push_back(handle);
+			scene.shadowPass.unbatchedObjects.push_back(handle);
+        }
+
+        scene.updateObject(handle);
     }
-
+       
     // recurse down
     Node::generateRenderObject(topMatrix, scene);
 }

@@ -38,7 +38,7 @@ VkPipeline PipelineBuilder::buildPipeline(VkDevice device)
     viewportState.viewportCount = 1;
     viewportState.scissorCount = 1;
 
-    // setup dummy color blending. We arent using transparent objects yet
+    // setup dummy color blending. We arent using forwardTransparent objects yet
     // the blending is just "no blend", but we do write to the color attachment
     VkPipelineColorBlendStateCreateInfo colorBlending = {};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
