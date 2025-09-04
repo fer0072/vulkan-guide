@@ -56,30 +56,77 @@ RenderObject* RenderScene::getRenderObject(Handle<RenderObject> objectID)
 	return &renderables[objectID.handle];
 }
 
-Handle<DrawMesh> RenderScene::getMeshHandle(const GeoSurface& surface, std::shared_ptr<OriginalMesh> originalMesh)
+Handle<DrawMesh> RenderScene::getMeshHandle(const GeoSurface& surface, std::shared_ptr<MeshAsset> meshAsset)
 {
 	Handle<DrawMesh> handle;
-	auto it = convertedMesh.find(originalMesh.get());
+	auto it = convertedMesh.find(meshAsset.get());
 	if (it == convertedMesh.end())
 	{
 		uint32_t index = static_cast<uint32_t>(drawMeshes.size());
 
 		DrawMesh newMesh;
-		newMesh.original = originalMesh;
+		newMesh.meshAsset = meshAsset;
 		newMesh.firstIndex = surface.startIndex;
 		newMesh.firstVertex = surface.startVertex;
-		newMesh.vertexCount = static_cast<uint32_t>(originalMesh->_vertices.size());
-		newMesh.indexCount = static_cast<uint32_t>(originalMesh->_indices.size());
+		newMesh.vertexCount = static_cast<uint32_t>(meshAsset->meshBuffers.original->_vertices.size());
+		newMesh.indexCount = static_cast<uint32_t>(meshAsset->meshBuffers.original->_indices.size());
 
 		drawMeshes.push_back(newMesh);
 
 		handle.handle = index;
-		convertedMesh[originalMesh.get()] = handle;
+		convertedMesh[meshAsset.get()] = handle;
 	}
 	else {
 		handle = (*it).second;
 	}
 	return handle;
+}
+
+void RenderScene::mergeMeshes(VulkanEngine* engine)
+{
+	uint32_t totalVertices = 0;
+	uint32_t totalIndices = 0;
+
+	for(DrawMesh& mesh: drawMeshes)
+	{
+		mesh.firstVertex = totalVertices;
+		mesh.firstIndex = totalIndices;
+
+		totalVertices += mesh.vertexCount;
+		totalIndices += mesh.indexCount;
+
+		mesh.isMerged = true;
+	}
+
+	mergedVertexBuffer = engine->createBuffer(totalVertices * sizeof(Vertex), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		VMA_MEMORY_USAGE_GPU_ONLY);
+
+	mergedIndexBuffer = engine->createBuffer(totalVertices * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+		VMA_MEMORY_USAGE_GPU_ONLY);
+
+	engine->immediateSubmit([&](VkCommandBuffer cmd) {
+		for (DrawMesh& mesh : drawMeshes)
+		{
+			VkBufferCopy vertexCopy;
+			vertexCopy.dstOffset = mesh.firstVertex * sizeof(Vertex);
+			vertexCopy.size = mesh.vertexCount * sizeof(Vertex);
+			vertexCopy.srcOffset = 0;
+
+			vkCmdCopyBuffer(cmd, mesh.meshAsset.lock()->meshBuffers.vertexBuffer.buffer, mergedVertexBuffer.buffer, 1, &vertexCopy);
+
+			VkBufferCopy indexCopy;
+			indexCopy.dstOffset = mesh.firstIndex * sizeof(uint32_t);
+			indexCopy.size = mesh.indexCount * sizeof(uint32_t);
+			indexCopy.srcOffset = 0;
+
+			vkCmdCopyBuffer(cmd, mesh.meshAsset.lock()->meshBuffers.indexBuffer.buffer, mergedIndexBuffer.buffer, 1, &indexCopy);
+		}
+		});
+
+	engine->_mainDeletionQueue.push_function([=]() {
+		engine->destroyBuffer(mergedVertexBuffer);
+		engine->destroyBuffer(mergedIndexBuffer);
+		});
 }
 
 void RenderScene::buildBatches()
@@ -258,6 +305,104 @@ void RenderScene::refreshPass(MeshPass* pass)
 			pass->flatBatches = std::move(newBatches);
 		}
 	}
+
+	/*
+	*  Merge flat batches into indirect batches.
+	*/
+	{
+		pass->indirectBatches.clear();
+
+		if (pass->flatBatches.size() > 0)
+		{
+			RenderScene::IndirectBatch newBatch;
+			newBatch.first = 0;
+			newBatch.count = 0;
+			newBatch.material = pass->get(pass->flatBatches[0].object)->material;
+			newBatch.meshID = pass->get(pass->flatBatches[0].object)->meshID;
+			pass->indirectBatches.push_back(newBatch);
+
+			RenderScene::IndirectBatch* lastBatch = &pass->indirectBatches.back();
+			MaterialInstance* lastMaterial = lastBatch->material.lock().get();
+			for(int i = 0; i < pass->flatBatches.size(); i++)
+			{
+				PassObject* passObject = pass->get(pass->flatBatches[i].object);
+				bool isSameMaterial = false;
+				bool isSameMesh = passObject->meshID.handle == lastBatch->meshID.handle;
+
+				if (passObject->material.lock().get() == lastMaterial)
+				{
+					isSameMaterial = true;
+				}
+
+				if (!isSameMaterial)
+				{
+					newBatch.material = passObject->material;
+
+					if (newBatch.material.lock() == lastBatch->material.lock())
+					{
+						isSameMaterial = true;
+					}
+				}
+
+				if (isSameMaterial && isSameMesh)
+				{
+					lastBatch->count++;
+				}
+				else
+				{
+					newBatch.first = i;
+					newBatch.count = 1;
+					newBatch.meshID = passObject->meshID;
+
+					pass->indirectBatches.push_back(newBatch);
+					lastBatch = &pass->indirectBatches.back();
+				}
+			}
+		}
+	}
+
+	/*
+	*  Merge indirect batches into multi batches.
+	*/
+	{
+		pass->multiBatches.clear();
+
+		MultiBatch newBatch;
+		newBatch.count = 1;
+		newBatch.first = 0;
+
+		for(int i = 0; i < pass->indirectBatches.size(); i++)
+		{
+			IndirectBatch* joinBatch = &pass->indirectBatches[newBatch.first];
+			IndirectBatch* nextBatch = &pass->indirectBatches[i];
+
+			bool isMeshCompatible = getMesh(joinBatch->meshID)->isMerged;
+			bool isSameMat = false;
+
+			if(joinBatch->material.lock()->materialSet == nextBatch->material.lock()->materialSet &&
+				joinBatch->material.lock()->pipeline == nextBatch->material.lock()->pipeline)
+			{
+				isSameMat = true;
+			}
+
+			if(!isSameMat || !isMeshCompatible)
+			{
+				pass->multiBatches.push_back(newBatch);
+				newBatch.count = 1;
+				newBatch.first = i;
+			}
+			else
+			{
+				newBatch.count++;
+			}
+		}
+		pass->multiBatches.push_back(newBatch);
+	}
+}
+
+DrawMesh* RenderScene::getMesh(Handle<DrawMesh> meshID)
+{
+	return &drawMeshes[meshID.handle];
 }
 
 RenderScene::PassObject* RenderScene::MeshPass::get(Handle<PassObject> handle)

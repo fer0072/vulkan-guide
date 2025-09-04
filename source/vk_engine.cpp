@@ -77,6 +77,8 @@ void VulkanEngine::init()
 
     initImgui();
 
+    _renderScene.mergeMeshes(this);
+
     _renderScene.buildBatches();
 
     // everything went fine
@@ -1442,7 +1444,7 @@ void MeshNode::generateRenderObject(const glm::mat4& topMatrix, RenderScene& sce
         newObject.material = std::make_shared<MaterialInstance>(s.material->data);
         newObject.bounds = s.bounds;
         newObject.transform = nodeMatrix;
-        newObject.meshID = scene.getMeshHandle(s, mesh->meshBuffers.original);
+        newObject.meshID = scene.getMeshHandle(s, mesh);
         newObject.updateIndex = (uint32_t)-1;
         newObject.passIndices.clear(-1);
         Handle<RenderObject> handle;

@@ -24,7 +24,7 @@ struct DrawMesh
     uint32_t firstVertex;
     bool isMerged = false;
 
-    std::weak_ptr<OriginalMesh> original;
+    std::weak_ptr<MeshAsset> meshAsset;
 };
 
 struct RenderObject 
@@ -77,10 +77,22 @@ public:
         }
     };
 
+    struct IndirectBatch {
+        Handle<DrawMesh> meshID;
+        std::weak_ptr <MaterialInstance> material;
+        uint32_t first;
+        uint32_t count;
+    };
+
+    struct MultiBatch {
+        uint32_t first;
+        uint32_t count;
+    };
+
     struct MeshPass 
     {
-        /*std::vector<RenderScene::Multibatch> multibatches;
-        std::vector<RenderScene::IndirectBatch> batches;*/
+        std::vector<RenderScene::MultiBatch> multiBatches;
+        std::vector<RenderScene::IndirectBatch> indirectBatches;
         std::vector<Handle<RenderObject>> unbatchedObjects;
         std::vector<RenderScene::FlatBatch> flatBatches;
         std::vector<PassObject> objects;
@@ -115,19 +127,26 @@ public:
 
     RenderObject* getRenderObject(Handle<RenderObject> objectID);
 
-    Handle<DrawMesh> getMeshHandle(const GeoSurface& surface, std::shared_ptr<OriginalMesh> originalMesh);
+    Handle<DrawMesh> getMeshHandle(const GeoSurface& surface, std::shared_ptr<MeshAsset> meshAsset);
+
+    DrawMesh* getMesh(Handle<DrawMesh> meshID);
+
+    void mergeMeshes(VulkanEngine* engine);
 
     void buildBatches();
 
-    void refreshPass(MeshPass* pass);
-
 private:
 
-    std::unordered_map<OriginalMesh*, Handle<DrawMesh>> convertedMesh;
+    std::unordered_map<MeshAsset*, Handle<DrawMesh>> convertedMesh;
 
     std::vector<DrawMesh> drawMeshes;
 
+    AllocatedBuffer mergedVertexBuffer;
+    AllocatedBuffer mergedIndexBuffer;
+
+    AllocatedBuffer objectDataBuffer;
+
 private:
 
-    
+    void refreshPass(MeshPass* pass);
 };
