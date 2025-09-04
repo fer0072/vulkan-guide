@@ -20,7 +20,6 @@ void RenderScene::updateObject(Handle<RenderObject> objectID)
 		passIndices[MaterialPass::forwardOpaque] = -1;
 	}
 
-
 	if (passIndices[MaterialPass::shadow] != -1)
 	{
 		Handle<PassObject> obj;
@@ -37,9 +36,9 @@ void RenderScene::updateObject(Handle<RenderObject> objectID)
 		Handle<PassObject> obj;
 		obj.handle = passIndices[MaterialPass::forwardTransparent];
 
-		forwardTransparentPass.unbatchedObjects.push_back(objectID);
 		forwardTransparentPass.objectsToDelete.push_back(obj);
-
+		forwardTransparentPass.unbatchedObjects.push_back(objectID);
+		
 		passIndices[MaterialPass::forwardTransparent] = -1;
 	}
 
@@ -190,6 +189,7 @@ void RenderScene::refreshPass(MeshPass* pass)
 		}
 
 		pass->unbatchedObjects.clear();
+		pass->unbatchedObjects.shrink_to_fit();
 	}
 
 	/*

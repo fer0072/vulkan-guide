@@ -149,6 +149,7 @@ public:
 
     // draw loop
     void draw();
+    void updateSceneData();
     void prepareMeshData(VkCommandBuffer cmd);
     void drawMain(VkCommandBuffer cmd);
     void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView);
@@ -161,7 +162,7 @@ public:
     // run main loop
     void run();
 
-    void updateScene();
+    void initRenderObjects();
 
     // upload a mesh into a pair of gpu buffers. If descriptor allocator is not
     // null, it will also create a descriptor that points to the vertex buffer
@@ -277,9 +278,7 @@ private:
 
     void initSyncStructures();
 
-    void initSceneData();
-
-    void initRenderables();
+    void initScene();
 
     void initImgui();
 

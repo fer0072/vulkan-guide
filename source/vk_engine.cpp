@@ -71,9 +71,9 @@ void VulkanEngine::init()
 
     createDefaultObjects();
 
-    initSceneData();
+    initScene();
 
-    initRenderables();
+    initRenderObjects();
 
     initImgui();
 
@@ -319,6 +319,22 @@ void VulkanEngine::drawImgui(VkCommandBuffer cmd, VkImageView targetImageView)
 	vkCmdEndRendering(cmd);
 }
 
+void VulkanEngine::updateSceneData()
+{
+    _mainCamera.updateCamera(_engineStats.frameTime);
+
+    glm::mat4 view = _mainCamera.getViewMatrix();
+
+    glm::mat4 projection = _mainCamera.getProjectionMatrix();
+
+    _sceneData.view = view;
+    _sceneData.proj = projection;
+    _sceneData.viewproj = projection * view;
+    _sceneData.sunlightDirection = glm::vec4(0.3f, 1.f, 0.3f, 1.0f);
+    _sceneData.sunlightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    _sceneData.ambientColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+}
+
 void VulkanEngine::draw()
 {
 	//wait until the gpu has finished rendering the last frame. Timeout of 1 second
@@ -338,6 +354,8 @@ void VulkanEngine::draw()
 	_drawExtent.width = uint32_t(std::min(_swapchainExtent.width, _drawImage.imageExtent.width) *  1.f);
 
 	VK_CHECK(vkResetFences(_device, 1, &getCurrentFrame()._renderFence));
+
+    updateSceneData();
 
 	//now that we are sure that the commands finished executing, we can safely reset the command buffer to begin recording again.
 	VK_CHECK(vkResetCommandBuffer(getCurrentFrame()._mainCommandBuffer, 0));
@@ -577,8 +595,6 @@ void VulkanEngine::forwardOpaquePass(VkCommandBuffer cmd)
         generateDrawCall(cmd, _globalDescriptor, *renderObject);
     }
 
-    _renderScene.forwardOpaquePass.flatBatches.clear();
-
     auto end = std::chrono::system_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
@@ -698,9 +714,6 @@ void VulkanEngine::run()
 
 		ImGui::Render();
 
-        updateScene();
-
-
         draw();
 
         auto end = std::chrono::system_clock::now();
@@ -710,21 +723,8 @@ void VulkanEngine::run()
     }
 }
 
-void VulkanEngine::updateScene()
+void VulkanEngine::initRenderObjects()
 {
-    _mainCamera.updateCamera(_engineStats.frameTime);
-
-	glm::mat4 view = _mainCamera.getViewMatrix();
-
-    glm::mat4 projection = _mainCamera.getProjectionMatrix();
-
-	_sceneData.view = view;
-	_sceneData.proj = projection;
-	_sceneData.viewproj = projection * view;
-    _sceneData.sunlightDirection = glm::vec4(0.3f, 1.f, 0.3f, 1.0f);
-    _sceneData.sunlightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-    _sceneData.ambientColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-
     if (_loadedScenes.count("structure"))
     {
         _loadedScenes["structure"]->generateRenderObject(glm::mat4{ 1.f }, _renderScene);
@@ -1155,8 +1155,29 @@ void VulkanEngine::initSyncStructures()
     }
 }
 
-void VulkanEngine::initSceneData()
+void VulkanEngine::initScene()
 {
+    // Setup camera and init the scene data.
+    _mainCamera.updateCamera(_engineStats.frameTime);
+
+    glm::mat4 view = _mainCamera.getViewMatrix();
+
+    glm::mat4 projection = _mainCamera.getProjectionMatrix();
+
+    _sceneData.view = view;
+	_sceneData.proj = projection;
+	_sceneData.viewproj = projection * view;
+    _sceneData.sunlightDirection = glm::vec4(0.3f, 1.f, 0.3f, 1.0f);
+    _sceneData.sunlightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+    _sceneData.ambientColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+
+    // Load models.
+    std::string structurePath = { "..\\..\\assets\\structure.glb" };
+    auto structureFile = loadGltf(this, structurePath);
+    assert(structureFile.has_value());
+    _loadedScenes["structure"] = *structureFile;
+
+    // Create global buffers for scene data.
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         //allocate a new uniform buffer for the scene data
         _frames[i]._sceneDataBuffer = createBuffer(sizeof(GPU_sceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -1166,16 +1187,6 @@ void VulkanEngine::initSceneData()
             destroyBuffer(_frames[i]._sceneDataBuffer);
             });
     }
-}
-
-void VulkanEngine::initRenderables()
-{
-    std::string structurePath = { "..\\..\\assets\\structure.glb" };
-    auto structureFile = loadGltf(this,structurePath);
-
-    assert(structureFile.has_value());
-
-    _loadedScenes["structure"] = *structureFile;
 }
 
 void VulkanEngine::initImgui()
