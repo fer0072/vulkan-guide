@@ -60,6 +60,22 @@ VkSemaphoreCreateInfo vkInit::semaphoreCreateInfo(VkSemaphoreCreateFlags flags /
     info.flags = flags;
     return info;
 }
+
+VkBufferMemoryBarrier vkInit::bufferMemoryBarrier(VkBuffer buffer, uint32_t queueFamilyIndex, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask)
+{
+    VkBufferMemoryBarrier barrier{};
+    barrier.buffer = buffer;
+    barrier.size = VK_WHOLE_SIZE;
+    barrier.srcAccessMask = srcAccessMask;
+    barrier.dstAccessMask = dstAccessMask;
+    barrier.srcQueueFamilyIndex = queueFamilyIndex;
+    barrier.dstQueueFamilyIndex = queueFamilyIndex;
+    barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barrier.pNext = nullptr;
+
+    return barrier;
+}
+
 //< init_sync
 
 //> init_submit

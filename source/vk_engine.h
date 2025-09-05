@@ -172,6 +172,8 @@ public:
     FrameData& getLastFrame();
 
     AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	void* mapBuffer(const AllocatedBuffer& buffer);
+    void unmapBuffer(const AllocatedBuffer& buffer);
 
     AllocatedImage createImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
     AllocatedImage createImage(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);

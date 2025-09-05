@@ -18,6 +18,7 @@
 #include <glm/gtx/transform.hpp>
 
 #define VMA_IMPLEMENTATION
+#include "vk_mem_alloc.h"
 #ifdef _DEBUG
 //#define VMA_DEBUG_LOG_FORMAT(format, ...)  printf((format), __VA_ARGS__)
 //#define VMA_DEBUG_LOG(str)                 printf("%s\n", (str))
@@ -26,7 +27,6 @@
 //#define VMA_DEBUG_MARGIN 16
 //#define VMA_DEBUG_GLOBAL_MUTEX 1
 #endif
-#include "vk_mem_alloc.h"
 
 constexpr bool bUseValidationLayers = false;
 
@@ -290,8 +290,9 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
     _engineStats.triangleCount = 0;
 
     // Update the data of scene buffer.
-    GPU_sceneData* sceneUniformData = (GPU_sceneData*)getCurrentFrame()._sceneDataBuffer.allocation->GetMappedData();
+    GPU_sceneData* sceneUniformData = (GPU_sceneData*)mapBuffer(getCurrentFrame()._sceneDataBuffer);
     *sceneUniformData = _sceneData;
+    unmapBuffer(getCurrentFrame()._sceneDataBuffer);
 
     // Create the global descriptor set that binds to the scene uniform data buffer.
     VkDescriptorSetVariableDescriptorCountAllocateInfo allocArrayInfo{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO, .pNext = nullptr };
@@ -749,10 +750,21 @@ AllocatedBuffer VulkanEngine::createBuffer(size_t allocSize, VkBufferUsageFlags 
     AllocatedBuffer newBuffer;
 
     // allocate the buffer
-    VK_CHECK(vmaCreateBuffer(_allocator, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation,
-        &newBuffer.info));
+    VK_CHECK(vmaCreateBuffer(_allocator, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation, &newBuffer.info));
 
     return newBuffer;
+}
+
+void* VulkanEngine::mapBuffer(const AllocatedBuffer& buffer)
+{
+    void* data;
+    vmaMapMemory(_allocator, buffer.allocation, &data);
+    return data;
+}
+
+void VulkanEngine::unmapBuffer(const AllocatedBuffer& buffer)
+{
+	vmaUnmapMemory(_allocator, buffer.allocation);
 }
 
 AllocatedImage VulkanEngine::createImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
@@ -850,12 +862,12 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
 
     AllocatedBuffer staging = createBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
-    void* data = staging.allocation->GetMappedData();
-
+	void* data = mapBuffer(staging);
     // copy vertex buffer
     memcpy(data, vertices.data(), vertexBufferSize);
     // copy index buffer
     memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
+    unmapBuffer(staging);
 
     immediateSubmit([&](VkCommandBuffer cmd) {
         VkBufferCopy vertexCopy { 0 };
