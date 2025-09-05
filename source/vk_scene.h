@@ -25,6 +25,11 @@ struct DrawMesh
     bool isMerged = false;
 
     std::weak_ptr<MeshAsset> meshAsset;
+
+    MeshAsset* getMeshAsset()
+    {
+        return meshAsset.lock().get();
+	}
 };
 
 struct RenderObject 
@@ -63,6 +68,11 @@ public:
         Handle<RenderObject> original;
         int32_t builtbatch;
         uint32_t customKey;
+
+        MaterialInstance* getMaterial()
+        {
+            return material.lock().get();
+        }
     };
 
     // Batch that is not merged yet.
@@ -82,6 +92,11 @@ public:
         std::weak_ptr <MaterialInstance> material;
         uint32_t first;
         uint32_t count;
+
+        MaterialInstance* getMaterial()
+        {
+            return material.lock().get();
+		}
     };
 
     struct MultiBatch {

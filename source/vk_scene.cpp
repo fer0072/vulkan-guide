@@ -322,14 +322,14 @@ void RenderScene::refreshPass(MeshPass* pass)
 			pass->indirectBatches.push_back(newBatch);
 
 			RenderScene::IndirectBatch* lastBatch = &pass->indirectBatches.back();
-			MaterialInstance* lastMaterial = lastBatch->material.lock().get();
+			MaterialInstance* lastMaterial = lastBatch->getMaterial();
 			for(int i = 0; i < pass->flatBatches.size(); i++)
 			{
 				PassObject* passObject = pass->get(pass->flatBatches[i].object);
 				bool isSameMaterial = false;
 				bool isSameMesh = passObject->meshID.handle == lastBatch->meshID.handle;
 
-				if (passObject->material.lock().get() == lastMaterial)
+				if (*passObject->getMaterial() == *lastMaterial)
 				{
 					isSameMaterial = true;
 				}
@@ -379,8 +379,7 @@ void RenderScene::refreshPass(MeshPass* pass)
 			bool isMeshCompatible = getMesh(joinBatch->meshID)->isMerged;
 			bool isSameMat = false;
 
-			if(joinBatch->material.lock()->materialSet == nextBatch->material.lock()->materialSet &&
-				joinBatch->material.lock()->pipeline == nextBatch->material.lock()->pipeline)
+			if(*joinBatch->getMaterial() == *nextBatch->getMaterial())
 			{
 				isSameMat = true;
 			}

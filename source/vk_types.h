@@ -102,7 +102,13 @@ struct MaterialInstance {
     MaterialPipeline* pipeline;
     VkDescriptorSet materialSet;
     MaterialPass passType;
+
+    bool operator==(const MaterialInstance& other) const
+    {
+        return pipeline == other.pipeline && materialSet == other.materialSet && passType == other.passType;
+    }
 };
+
 //< mat_types
 //> vbuf_types
 struct Vertex {
