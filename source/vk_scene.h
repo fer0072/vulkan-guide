@@ -16,6 +16,24 @@ struct Handle
     uint32_t handle;
 };
 
+struct GPUObjectData
+{
+    glm::mat4 transform;
+    glm::vec4 boundOriginAndRadius;
+    glm::vec4 boundExtent;
+};
+
+struct GPUIndirectObject {
+    VkDrawIndexedIndirectCommand command;
+    uint32_t objectID;
+    uint32_t batchID;
+};
+
+struct GPUInstance {
+    uint32_t objectID;
+    uint32_t batchID;
+};
+
 struct DrawMesh
 {
     uint32_t indexCount;
@@ -114,23 +132,23 @@ public:
         std::vector<Handle<PassObject>> reusableObjects;
         std::vector<Handle<PassObject>> objectsToDelete;
 
-        AllocatedBuffer compactedInstanceBuffer;
-        AllocatedBuffer passObjectsBuffer;
+        std::optional<AllocatedBuffer> compactedInstanceBuffer;
+        std::optional<AllocatedBuffer> GPUInstanceBuffer;
 
-        AllocatedBuffer drawIndirectBuffer;
-        AllocatedBuffer clearIndirectBuffer;
+        std::optional<AllocatedBuffer> drawIndirectBuffer;
+        std::optional<AllocatedBuffer> clearIndirectBuffer;
 
         PassObject* get(Handle<PassObject> handle);
 
         MaterialPass passType;
 
-        bool needsIndirectRefresh = true;
-        bool needsInstanceRefresh = true;
+        bool needsIndirectRefresh = false;
+        bool needsInstanceRefresh = false;
     };
 
 	// Dirty objects is objects whose data has not been updated to the gpu yet.
-    std::vector<Handle<RenderObject>> dirtyObjects;
-    std::vector<RenderObject> renderables;
+    std::vector<Handle<RenderObject>> dirtyRenderObjects;
+    std::vector<RenderObject> allRenderObjects;
 
     MeshPass shadowPass;
     MeshPass forwardOpaquePass;
@@ -139,6 +157,8 @@ public:
 public:
 
 	void updateObject(Handle<RenderObject> handle);
+
+    void uploadObjectData(VkCommandBuffer cmd, VulkanEngine* engine);
 
     RenderObject* getRenderObject(Handle<RenderObject> objectID);
 
@@ -156,12 +176,14 @@ private:
 
     std::vector<DrawMesh> drawMeshes;
 
-    AllocatedBuffer mergedVertexBuffer;
-    AllocatedBuffer mergedIndexBuffer;
-
-    AllocatedBuffer objectDataBuffer;
+	// Merged vertex buffer, index buffer and object data buffer that contains data of all render objects.
+    std::optional<AllocatedBuffer> mergedVertexBuffer;
+    std::optional<AllocatedBuffer> mergedIndexBuffer;
+    std::optional<AllocatedBuffer> objectDataBuffer;
 
 private:
 
     void refreshPass(MeshPass* pass);
+
+    void clearDirtyObjects();
 };

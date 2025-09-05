@@ -303,6 +303,8 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
 
     _globalDescriptor = getCurrentFrame()._frameDescriptors.allocate(_device, _gpu_sceneDataDescriptorLayout, &allocArrayInfo);
 
+    _renderScene.uploadObjectData(cmd, this);
+
     //shadowPass(cmd);
     forwardOpaquePass(cmd);
     //forwardTransparentPass(cmd);
@@ -1460,9 +1462,9 @@ void MeshNode::generateRenderObject(const glm::mat4& topMatrix, RenderScene& sce
         newObject.updateIndex = (uint32_t)-1;
         newObject.passIndices.clear(-1);
         Handle<RenderObject> handle;
-        handle.handle = static_cast<uint32_t>(scene.renderables.size());
+        handle.handle = static_cast<uint32_t>(scene.allRenderObjects.size());
 
-        scene.renderables.push_back(newObject);
+        scene.allRenderObjects.push_back(newObject);
 
         if (s.material->data.passType == MaterialPass::forwardTransparent) 
         {

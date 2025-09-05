@@ -150,7 +150,6 @@ public:
     // draw loop
     void draw();
     void updateSceneData();
-    void prepareMeshData(VkCommandBuffer cmd);
     void drawMain(VkCommandBuffer cmd);
     void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView);
 

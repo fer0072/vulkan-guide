@@ -437,7 +437,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 
 void LoadedGLTF::generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene)
 {
-    // create renderables from the scenenodes
+    // create allRenderObjects from the scenenodes
     for (auto& n : topNodes) {
         n->generateRenderObject(topMatrix, scene);
     }
