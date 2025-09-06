@@ -52,12 +52,6 @@ struct DrawMesh
 
 struct RenderObject 
 {
-    // TBD
-    uint32_t indexCount;
-    uint32_t firstIndex;
-    VkBuffer indexBuffer;
-    VkDeviceAddress vertexBufferAddress;
-
     Handle<DrawMesh> meshID;
     std::shared_ptr<MaterialInstance> material;
 
@@ -154,6 +148,11 @@ public:
     MeshPass forwardOpaquePass;
     MeshPass forwardTransparentPass;
 
+    // Merged vertex buffer, index buffer and object data buffer that contains data of all render objects.
+    std::optional<AllocatedBuffer> mergedVertexBuffer;
+    std::optional<AllocatedBuffer> mergedIndexBuffer;
+    std::optional<AllocatedBuffer> objectDataBuffer;
+
 public:
 
 	void updateObject(Handle<RenderObject> handle);
@@ -175,11 +174,6 @@ private:
     std::unordered_map<MeshAsset*, Handle<DrawMesh>> convertedMesh;
 
     std::vector<DrawMesh> drawMeshes;
-
-	// Merged vertex buffer, index buffer and object data buffer that contains data of all render objects.
-    std::optional<AllocatedBuffer> mergedVertexBuffer;
-    std::optional<AllocatedBuffer> mergedIndexBuffer;
-    std::optional<AllocatedBuffer> objectDataBuffer;
 
 private:
 

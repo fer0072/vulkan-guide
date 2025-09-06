@@ -2,14 +2,14 @@
 #include "vk_initializers.h"
 
 //> descriptor_bind
-void DescriptorLayoutBuilder::addBinding(uint32_t binding, VkDescriptorType type)
+void DescriptorLayoutBuilder::addBinding(uint32_t binding, VkDescriptorType type, uint32_t descriptorCount)
 {
-    VkDescriptorSetLayoutBinding newbind {};
-    newbind.binding = binding;
-    newbind.descriptorCount = 1;
-    newbind.descriptorType = type;
+    VkDescriptorSetLayoutBinding newBinding {};
+    newBinding.binding = binding;
+    newBinding.descriptorCount = descriptorCount;
+    newBinding.descriptorType = type;
 
-    bindings.push_back(newbind);
+    bindings.push_back(newBinding);
 }
 
 void DescriptorLayoutBuilder::clear()

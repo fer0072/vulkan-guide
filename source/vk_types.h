@@ -35,6 +35,7 @@ struct AllocatedBuffer {
     VkBuffer buffer;
     VmaAllocation allocation;
     VmaAllocationInfo info;
+	size_t size = 0;
 };
 
 struct GPUGLTFMaterial {
@@ -112,10 +113,8 @@ struct MaterialInstance {
 //< mat_types
 //> vbuf_types
 struct Vertex {
-	glm::vec3 position;
-	float uv_x;
-	glm::vec3 normal;
-	float uv_y;
+	glm::vec4 position_uvx;
+	glm::vec4 normal_uvy;
 	glm::vec4 color;
 };
 
@@ -130,8 +129,6 @@ struct GPUMeshBuffers {
     
     AllocatedBuffer indexBuffer;
     AllocatedBuffer vertexBuffer;
-    //TBD
-    VkDeviceAddress vertexBufferAddress;
 
     std::shared_ptr<OriginalMesh> original;
 };

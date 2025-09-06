@@ -5,6 +5,13 @@
 class PipelineBuilder {
 //> pipeline
 public:
+    struct VertexInputDescription {
+        std::vector<VkVertexInputBindingDescription> bindings;
+        std::vector<VkVertexInputAttributeDescription> attributes;
+
+        VkPipelineVertexInputStateCreateFlags flags = 0;
+    };
+
     std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
    
     VkPipelineInputAssemblyStateCreateInfo _inputAssembly;
@@ -14,6 +21,7 @@ public:
     VkPipelineLayout _pipelineLayout;
     VkPipelineDepthStencilStateCreateInfo _depthStencil;
     VkPipelineRenderingCreateInfo _renderInfo;
+    VertexInputDescription _vertexInputDescription;
     VkFormat _colorAttachmentformat;
 
 	PipelineBuilder(){ clear(); }
@@ -22,6 +30,7 @@ public:
 
     VkPipeline buildPipeline(VkDevice device);
 //< pipeline
+    void setVertexDescription();
     void setShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader);
     void setInputTopology(VkPrimitiveTopology topology);
     void setPolygonMode(VkPolygonMode mode);

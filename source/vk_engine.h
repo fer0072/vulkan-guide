@@ -153,10 +153,9 @@ public:
     void drawMain(VkCommandBuffer cmd);
     void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView);
 
-    void generateDrawCall(VkCommandBuffer cmd, const VkDescriptorSet& globalDescriptor, const RenderObject& renderObject);
+    void generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass);
     void shadowPass(VkCommandBuffer cmd);
-    void forwardOpaquePass(VkCommandBuffer cmd);
-    void forwardTransparentPass(VkCommandBuffer cmd);
+    void forwardPass(VkCommandBuffer cmd);
 
     // run main loop
     void run();
@@ -222,8 +221,10 @@ public:
 
     VmaAllocator _allocator; // vma lib allocator
 
-    VkDescriptorSetLayout _gpu_sceneDataDescriptorLayout;
-    VkDescriptorSet _globalDescriptor;
+    VkDescriptorSetLayout _globalDescriptorSetLayout;
+    VkDescriptorSet _globalDescriptorSet;
+    VkDescriptorSetLayout _objectDataDescriptorSetLayout;
+    VkDescriptorSet _objectDataDescriptorSet;
 
     GLTFMetallic_Roughness _metalRoughMaterial;
 

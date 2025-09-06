@@ -316,11 +316,9 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
                     [&](glm::vec3 v, size_t index) {
                         Vertex newvtx;
-                        newvtx.position = v;
-                        newvtx.normal = { 1, 0, 0 };
+                        newvtx.position_uvx = glm::vec4(v,0);
+                        newvtx.normal_uvy = { 1, 0, 0, 0 };
                         newvtx.color = glm::vec4 { 1.f };
-                        newvtx.uv_x = 0;
-                        newvtx.uv_y = 0;
                         vertices[initial_vtx + index] = newvtx;
                     });
             }
@@ -331,7 +329,9 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 
                 fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[(*normals).second],
                     [&](glm::vec3 v, size_t index) {
-                        vertices[initial_vtx + index].normal = v;
+                        vertices[initial_vtx + index].normal_uvy.x = v.x;
+                        vertices[initial_vtx + index].normal_uvy.y = v.y;
+                        vertices[initial_vtx + index].normal_uvy.z = v.z;
                     });
             }
 
@@ -341,8 +341,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 
                 fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[(*uv).second],
                     [&](glm::vec2 v, size_t index) {
-                        vertices[initial_vtx + index].uv_x = v.x;
-                        vertices[initial_vtx + index].uv_y = v.y;
+                        vertices[initial_vtx + index].position_uvx.w = v.x;
+                        vertices[initial_vtx + index].normal_uvy.w = v.y;
                     });
             }
 
@@ -362,11 +362,15 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
                 newSurface.material = materials[0];
             }
 
-            glm::vec3 minpos = vertices[initial_vtx].position;
-            glm::vec3 maxpos = vertices[initial_vtx].position;
+			glm::vec4 position_uvx = vertices[initial_vtx].position_uvx;
+            glm::vec3 position = glm::vec3(position_uvx.x, position_uvx.y, position_uvx.z);
+            glm::vec3 minpos = position;
+            glm::vec3 maxpos = position;
             for (size_t i = initial_vtx; i < vertices.size(); i++) {
-                minpos = glm::min(minpos, vertices[i].position);
-                maxpos = glm::max(maxpos, vertices[i].position);
+                position_uvx = vertices[initial_vtx].position_uvx;
+				position = glm::vec3(position_uvx.x, position_uvx.y, position_uvx.z);
+                minpos = glm::min(minpos, position);
+                maxpos = glm::max(maxpos, position);
             }
 
             newSurface.bounds.origin = (maxpos + minpos) / 2.f;

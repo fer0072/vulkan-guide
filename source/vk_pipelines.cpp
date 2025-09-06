@@ -49,8 +49,13 @@ VkPipeline PipelineBuilder::buildPipeline(VkDevice device)
     colorBlending.attachmentCount = 1;
     colorBlending.pAttachments = &_colorBlendAttachment;
 
-    // completely clear VertexInputStateCreateInfo, as we have no need for it
     VkPipelineVertexInputStateCreateInfo _vertexInputInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+
+    _vertexInputInfo.pVertexAttributeDescriptions = _vertexInputDescription.attributes.data();
+    _vertexInputInfo.vertexAttributeDescriptionCount = (uint32_t)_vertexInputDescription.attributes.size();
+
+    _vertexInputInfo.pVertexBindingDescriptions = _vertexInputDescription.bindings.data();
+    _vertexInputInfo.vertexBindingDescriptionCount = (uint32_t)_vertexInputDescription.bindings.size();
 
     //< build_pipeline_1
 
@@ -97,6 +102,44 @@ VkPipeline PipelineBuilder::buildPipeline(VkDevice device)
     }
     //< build_pipeline_4
 }
+
+void PipelineBuilder::setVertexDescription()
+{
+    // We will have just 1 vertex buffer binding, with a per-vertex rate
+    VkVertexInputBindingDescription mainBinding = {};
+    mainBinding.binding = 0;
+    mainBinding.stride = sizeof(Vertex);
+    mainBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    _vertexInputDescription.bindings.push_back(mainBinding);
+
+    // Position_uvx will be stored at Location 0
+    VkVertexInputAttributeDescription positionUvxAttribute = {};
+    positionUvxAttribute.binding = 0;
+    positionUvxAttribute.location = 0;
+    positionUvxAttribute.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    positionUvxAttribute.offset = offsetof(Vertex, position_uvx);
+
+    // Normal_uvy will be stored at Location 1
+    VkVertexInputAttributeDescription normalUvyAttribute = {};
+    normalUvyAttribute.binding = 0;
+    normalUvyAttribute.location = 1;
+    normalUvyAttribute.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    normalUvyAttribute.offset = offsetof(Vertex, normal_uvy);
+
+    //Color will be stored at Location 2
+    VkVertexInputAttributeDescription colorAttribute = {};
+    colorAttribute.binding = 0;
+    colorAttribute.location = 2;
+    colorAttribute.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    colorAttribute.offset = offsetof(Vertex, color);
+
+	_vertexInputDescription.attributes.push_back(positionUvxAttribute);
+	_vertexInputDescription.attributes.push_back(normalUvyAttribute);
+    _vertexInputDescription.attributes.push_back(colorAttribute);
+}
+
+
 //> setShaders
 void PipelineBuilder::setShaders(VkShaderModule vertexShader, VkShaderModule fragmentShader)
 {
