@@ -34,9 +34,12 @@ constexpr bool bUseValidationLayers = true;
 // would give an error message to the user, or perform a dump of state.
 using namespace std;
 
-#define CHAPTER_STAGE 1
-
 VulkanEngine* loadedEngine = nullptr;
+
+glm::vec4 normalizePlane(glm::vec4 p)
+{
+    return p / glm::length(glm::vec3(p));
+}
 
 VulkanEngine& VulkanEngine::Get()
 {
@@ -182,7 +185,7 @@ void VulkanEngine::cleanup()
     }
 }
 
-void VulkanEngine::initBackgroundPipelines()
+void VulkanEngine::initBackgroundEffects()
 {
 	VkPipelineLayoutCreateInfo computeLayout{};
 	computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -262,6 +265,58 @@ void VulkanEngine::initBackgroundPipelines()
 		});
 }
 
+void VulkanEngine::initComputeCullEffect()
+{
+    VkPipelineLayoutCreateInfo computeLayout{};
+    computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    computeLayout.pNext = nullptr;
+    computeLayout.pSetLayouts = &_cullDataDescriptorSetLayout;
+    computeLayout.setLayoutCount = 1;
+
+    VkPushConstantRange pushConstant{};
+    pushConstant.offset = 0;
+    pushConstant.size = sizeof(DrawCullData);
+    pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    computeLayout.pPushConstantRanges = &pushConstant;
+    computeLayout.pushConstantRangeCount = 1;
+
+    VkPipelineLayout computeCullPipelineLayout;
+
+    VK_CHECK(vkCreatePipelineLayout(_device, &computeLayout, nullptr, &computeCullPipelineLayout));
+
+    VkShaderModule computeCullShader;
+    if (!vkUtils::loadShaderModule("../../shaders/indirect_cull.comp.spv", _device, &computeCullShader)) {
+        fmt::print("Error when building the compute shader \n");
+    }
+
+    VkPipelineShaderStageCreateInfo stageinfo{};
+    stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stageinfo.pNext = nullptr;
+    stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    stageinfo.module = computeCullShader;
+    stageinfo.pName = "main";
+
+    VkComputePipelineCreateInfo computePipelineCreateInfo{};
+    computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    computePipelineCreateInfo.pNext = nullptr;
+    computePipelineCreateInfo.layout = computeCullPipelineLayout;
+    computePipelineCreateInfo.stage = stageinfo;
+
+    _computeCullEffect.layout = computeCullPipelineLayout;
+    _computeCullEffect.name = "computeCull";
+    _computeCullEffect.data = {};
+
+    VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &_computeCullEffect.pipeline));
+
+    // Destroy structures properly
+    vkDestroyShaderModule(_device, computeCullShader, nullptr);
+    _mainDeletionQueue.push_function([&]() {
+        vkDestroyPipeline(_device, _computeCullEffect.pipeline, nullptr);
+        vkDestroyPipelineLayout(_device, _computeCullEffect.layout, nullptr);
+        });
+}
+
 
 void VulkanEngine::drawMain(VkCommandBuffer cmd)
 {
@@ -280,10 +335,17 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
 	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
 	vkCmdDispatch(cmd, uint32_t(std::ceil(_drawExtent.width / 16.0)), uint32_t(std::ceil(_drawExtent.height / 16.0)), 1);
 
+    /*
+    *  Prepare data for each passes.
+    */
+    _renderScene.prepareMeshData(cmd, this);
+    _renderScene.prepareComputeCullData(cmd, this);
+
+    computeCullPass(cmd);
+
 	/*
 	*  Draw the forward pass, including opaque objects and transparent objects.
-    */
-    _renderScene.uploadObjectData(cmd, this);    
+    */   
 
     //shadowPass(cmd);
     forwardPass(cmd);
@@ -476,70 +538,154 @@ bool isVisible(const RenderObject& obj, const glm::mat4& viewproj) {
     }
 }
 
+void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass, CullParams& cullParams)
+{
+    if (meshPass.indirectBatches.size() == 0) return;
+
+    _cullDataDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _cullDataDescriptorSetLayout);
+
+    DescriptorWriter writer;
+    writer.addBufferDescriptorSet(0, _renderScene.objectDataBuffer.value().buffer, _renderScene.objectDataBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
+    writer.addBufferDescriptorSet(1, meshPass.drawIndirectBuffer.value().buffer, meshPass.drawIndirectBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
+    writer.addBufferDescriptorSet(2, meshPass.GPUInstanceBuffer.value().buffer, meshPass.GPUInstanceBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
+    writer.addBufferDescriptorSet(3, meshPass.compactedInstanceBuffer.value().buffer, meshPass.compactedInstanceBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+
+    //TBD
+    //writer.addImageDescriptorSet(4, _depthPyramid.imageView, _depthSampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+    writer.addBufferDescriptorSet(4, getCurrentFrame()._sceneDataBuffer.buffer, getCurrentFrame()._sceneDataBuffer.size, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+
+    writer.updateDescriptorSets(_device, _cullDataDescriptorSet);
+
+    glm::mat4 projMat = cullParams.projMat;
+    glm::mat4 transposedProjMat = glm::transpose(projMat);
+
+    glm::vec4 frustumX = normalizePlane(transposedProjMat[3] + transposedProjMat[0]); // x + w < 0
+    glm::vec4 frustumY = normalizePlane(transposedProjMat[3] + transposedProjMat[1]); // y + w < 0
+
+    DrawCullData cullData = {};
+    cullData.P00 = projMat[0][0];
+    cullData.P11 = projMat[1][1];
+    cullData.zNear = 0.1f;
+    cullData.zFar = cullParams.drawDist;
+    cullData.frustum[0] = frustumX.x;
+    cullData.frustum[1] = frustumX.z;
+    cullData.frustum[2] = frustumY.y;
+    cullData.frustum[3] = frustumY.z;
+    cullData.drawCount = static_cast<uint32_t>(meshPass.flatBatches.size());
+    cullData.cullingEnabled = cullParams.frustrumCull;
+    cullData.lodEnabled = false;
+    cullData.occlusionEnabled = cullParams.occlusionCull;
+    cullData.lodBase = 10.f;
+    cullData.lodStep = 1.5f;
+    //TBD
+    cullData.pyramidWidth = 1.0f;// static_cast<float>(depthPyramidWidth);
+    cullData.pyramidHeight = 1.0f;// static_cast<float>(depthPyramidHeight);
+    cullData.viewMat = cullParams.viewMat;//get_view_matrix();
+
+    cullData.AABBcheck = cullParams.aabb;
+    cullData.aabbMin_x = cullParams.aabbMin.x;
+    cullData.aabbMin_y = cullParams.aabbMin.y;
+    cullData.aabbMin_z = cullParams.aabbMin.z;
+
+    cullData.aabbMax_x = cullParams.aabbMax.x;
+    cullData.aabbMax_y = cullParams.aabbMax.y;
+    cullData.aabbMax_z = cullParams.aabbMax.z;
+
+    if (cullParams.drawDist > 10000)
+    {
+        cullData.distanceCheck = false;
+    }
+    else
+    {
+        cullData.distanceCheck = true;
+    }
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.pipeline);
+
+    vkCmdPushConstants(cmd, _computeCullEffect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(DrawCullData), &cullData);
+
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 0, 1, &_cullDataDescriptorSet, 0, nullptr);
+
+    vkCmdDispatch(cmd, static_cast<uint32_t>((meshPass.flatBatches.size() / 256) + 1), 1, 1);
+
+    // Add memory barriers.
+    {
+        VkBufferMemoryBarrier barrier = vkInit::bufferMemoryBarrier(meshPass.compactedInstanceBuffer.value().buffer, _graphicsQueueFamily, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+
+        VkBufferMemoryBarrier barrier2 = vkInit::bufferMemoryBarrier(meshPass.drawIndirectBuffer.value().buffer, _graphicsQueueFamily, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+
+        postCullBarriers.emplace_back(barrier);
+        postCullBarriers.emplace_back(barrier2);
+    }
+}
+
+void VulkanEngine::computeCullPass(VkCommandBuffer cmd)
+{
+    postCullBarriers.clear();
+
+    CullParams forwardCullParams;
+    forwardCullParams.viewMat = _mainCamera.getViewMatrix();
+	forwardCullParams.projMat = _mainCamera.getProjectionMatrix();
+    forwardCullParams.frustrumCull = true;
+    forwardCullParams.occlusionCull = true;
+    // TBD use cvar to control
+    forwardCullParams.drawDist = 5000.0f;
+	forwardCullParams.aabb = false;
+
+	generateComputeCullCommands(cmd, _renderScene.forwardOpaquePass, forwardCullParams);
+    //generateComputeCullCommands(cmd, _renderScene.forwardTransparentPass, forwardCullParams);
+
+    if (postCullBarriers.size() > 0)
+    {
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0,
+            0, nullptr, static_cast<uint32_t>(postCullBarriers.size()), postCullBarriers.data(), 0, nullptr);
+	}
+}
+
+void VulkanEngine::shadowPass(VkCommandBuffer cmd)
+{
+
+}
+
 void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass)
 {
+    //TBD
     if (meshPass.indirectBatches.size() > 0)
     {
-		DrawMesh* lastMesh = nullptr;
+        DrawMesh* lastMesh = nullptr;
         VkPipeline lastPipeline = VK_NULL_HANDLE;
         VkPipelineLayout lastLayout = VK_NULL_HANDLE;
         VkDescriptorSet lastMaterialSet = VK_NULL_HANDLE;
 
         for (int i = 0; i < meshPass.multiBatches.size(); i++)
         {
-			auto& multiBatch = meshPass.multiBatches[i];
-			auto& indirectBatch = meshPass.indirectBatches[multiBatch.first];
+            auto& multiBatch = meshPass.multiBatches[i];
+            auto& indirectBatch = meshPass.indirectBatches[multiBatch.first];
 
             VkPipeline newPipeline = indirectBatch.getMaterial()->pipeline->pipeline;
-			VkPipelineLayout newLayout = indirectBatch.getMaterial()->pipeline->layout;
-			VkDescriptorSet newDescriptorSet = indirectBatch.getMaterial()->materialSet;
+            VkPipelineLayout newLayout = indirectBatch.getMaterial()->pipeline->layout;
+            VkDescriptorSet newDescriptorSet = indirectBatch.getMaterial()->materialSet;
 
             DrawMesh* drawMesh = _renderScene.getMesh(indirectBatch.meshID);
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newPipeline);
 
-            if(newPipeline != lastPipeline)
-            {
-                lastPipeline = newPipeline;
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newPipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 0, 1, &_globalDescriptorSet, 0, nullptr);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 1, 1, &_objectDataDescriptorSet, 0, nullptr);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 2, 1, &newDescriptorSet, 0, nullptr);
 
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 0, 1, &_globalDescriptorSet, 0, nullptr);
-
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 1, 1, &_objectDataDescriptorSet, 0, nullptr);
-			}
-
-            if(newDescriptorSet != lastMaterialSet)
-            {
-                lastMaterialSet = newDescriptorSet;
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 2, 1, &newDescriptorSet, 0, nullptr);
-			}
-            
             VkDeviceSize offset = 0;
-            if (_renderScene.getMesh(indirectBatch.meshID)->isMerged)
-            {
-                vkCmdBindVertexBuffers(cmd, 0, 1, &_renderScene.mergedVertexBuffer.value().buffer, &offset);
+            vkCmdBindVertexBuffers(cmd, 0, 1, &_renderScene.mergedVertexBuffer.value().buffer, &offset);
+            vkCmdBindIndexBuffer(cmd, _renderScene.mergedIndexBuffer.value().buffer, 0, VK_INDEX_TYPE_UINT32);
 
-                vkCmdBindIndexBuffer(cmd, _renderScene.mergedIndexBuffer.value().buffer, 0, VK_INDEX_TYPE_UINT32);
-            }
-            else if (lastMesh != drawMesh)
-            {
-                vkCmdBindVertexBuffers(cmd, 0, 1, &drawMesh->meshAsset.lock()->meshBuffers.vertexBuffer.buffer, &offset);
+            vkCmdDrawIndexedIndirect(cmd, meshPass.drawIndirectBuffer.value().buffer, multiBatch.first * sizeof(GPUIndirectObject), multiBatch.count, sizeof(GPUIndirectObject));
 
-                vkCmdBindIndexBuffer(cmd, drawMesh->meshAsset.lock()->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-                lastMesh = drawMesh;
-            }
-
-			//vkCmdDrawIndexedIndirect(cmd, meshPass.drawIndirectBuffer.value().buffer, multiBatch.first * sizeof(GPUIndirectObject), multiBatch.count, sizeof(GPUIndirectObject));
-            vkCmdDrawIndexedIndirect(cmd, meshPass.clearIndirectBuffer.value().buffer, multiBatch.first * sizeof(GPUIndirectObject), multiBatch.count, sizeof(GPUIndirectObject));
-
-            _engineStats.triangleCount += static_cast<int32_t>(drawMesh->indexCount / 3 * indirectBatch.count * multiBatch.count);
             _engineStats.drawcallCount++;
         }
     }
-}
-
-void VulkanEngine::shadowPass(VkCommandBuffer cmd)
-{
-
 }
 
 void VulkanEngine::forwardPass(VkCommandBuffer cmd)
@@ -614,16 +760,13 @@ void VulkanEngine::forwardPass(VkCommandBuffer cmd)
     writer.updateDescriptorSets(_device, _globalDescriptorSet);
 
 	// Add object data buffer to the global descriptor set.
-    writer.clear();
-    descriptorCounts = uint32_t(1);
-    allocArrayInfo.pDescriptorCounts = &descriptorCounts;
-    allocArrayInfo.descriptorSetCount = 1;
+    _objectDataDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _objectDataDescriptorSetLayout);
 
-    _objectDataDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _objectDataDescriptorSetLayout, &allocArrayInfo);
+    writer.clear();
 
     writer.addBufferDescriptorSet(0, _renderScene.objectDataBuffer.value().buffer, _renderScene.objectDataBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-    writer.addBufferDescriptorSet(1, _renderScene.forwardOpaquePass.GPUInstanceBuffer.value().buffer, _renderScene.forwardOpaquePass.GPUInstanceBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.addBufferDescriptorSet(1, _renderScene.forwardOpaquePass.compactedInstanceBuffer.value().buffer, _renderScene.forwardOpaquePass.compactedInstanceBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
     writer.updateDescriptorSets(_device, _objectDataDescriptorSet);
 
@@ -1276,7 +1419,8 @@ void VulkanEngine::initImgui()
 void VulkanEngine::initPipelines()
 {
     // COMPUTE PIPELINES
-    initBackgroundPipelines();
+    initBackgroundEffects();
+    initComputeCullEffect();
 
     _metalRoughMaterial.buildPipelines(this);
 }
@@ -1298,6 +1442,16 @@ void VulkanEngine::initDescriptors()
         DescriptorLayoutBuilder builder;
         builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1);
         _drawImageDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
+    }
+    {
+        DescriptorLayoutBuilder builder;
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
+        builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
+        builder.addBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
+        builder.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
+        //builder.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1);
+        builder.addBinding(4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
+        _cullDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
     }
     {
         DescriptorLayoutBuilder builder;
@@ -1324,6 +1478,7 @@ void VulkanEngine::initDescriptors()
         vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _globalDescriptorSetLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _objectDataDescriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _cullDataDescriptorSetLayout, nullptr);
     });
 
     _drawImageDescriptors = _globalDescriptorAllocator.allocate(_device, _drawImageDescriptorLayout);
@@ -1425,6 +1580,13 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	
 	vkDestroyShaderModule(engine->_device, meshFragShader, nullptr);
 	vkDestroyShaderModule(engine->_device, meshVertexShader, nullptr);
+
+    engine->_mainDeletionQueue.push_function([=]() {
+        vkDestroyPipeline(engine->_device, opaquePipeline.pipeline, nullptr);
+        vkDestroyPipeline(engine->_device, transparentPipeline.pipeline, nullptr);
+        vkDestroyPipelineLayout(engine->_device, newLayout, nullptr);
+        vkDestroyDescriptorSetLayout(engine->_device, materialLayout, nullptr);
+		});
 }
 
 void GLTFMetallic_Roughness::clearResources(VkDevice device)

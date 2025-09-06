@@ -4,7 +4,34 @@
 #include "vk_mem_alloc.h"
 #include <future>
 
-void RenderScene::uploadObjectData(VkCommandBuffer cmd, VulkanEngine* engine)
+void RenderScene::prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine)
+{
+	cullReadyBarriers.clear();
+
+	//prepareComputeCullData(cmd, engine, _renderScene.shadowPass);
+	prepareComputeCullData(cmd, engine, forwardOpaquePass);
+	//prepareComputeCullData(cmd, engine, forwardTransparentPass);
+
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, cullReadyBarriers.size(), cullReadyBarriers.data(), 0, nullptr);
+}
+
+void RenderScene::prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass& meshPass)
+{
+	// Copy the complete indirect buffer into the one we actually use during rendering. This happens every frame.
+	VkBufferCopy indirectCopy;
+	indirectCopy.dstOffset = 0;
+	indirectCopy.size = meshPass.indirectBatches.size() * sizeof(GPUIndirectObject);
+	indirectCopy.srcOffset = 0;
+	vkCmdCopyBuffer(cmd, meshPass.completeIndirectBuffer.value().buffer, meshPass.drawIndirectBuffer.value().buffer, 1, &indirectCopy);
+
+	//TBD, create compute queue family?
+	VkBufferMemoryBarrier barrier = vkInit::bufferMemoryBarrier(meshPass.drawIndirectBuffer.value().buffer, engine->_graphicsQueueFamily, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
+
+	cullReadyBarriers.push_back(barrier);
+}
+
+
+void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 {
 	std::vector<VkBufferMemoryBarrier> uploadBarriers;
 
@@ -113,8 +140,7 @@ void RenderScene::uploadObjectData(VkCommandBuffer cmd, VulkanEngine* engine)
 
 				indirectData[i].command.firstInstance = indirectBatch.first;
 				// TBD
-				//indirectData[i].command.instanceCount = 0;
-				indirectData[i].command.instanceCount = indirectBatch.count;
+				indirectData[i].command.instanceCount = 0;
 				indirectData[i].command.firstIndex = getMesh(indirectBatch.meshID)->firstIndex;
 				indirectData[i].command.vertexOffset = getMesh(indirectBatch.meshID)->firstVertex;
 				indirectData[i].command.indexCount = getMesh(indirectBatch.meshID)->indexCount;
@@ -126,7 +152,7 @@ void RenderScene::uploadObjectData(VkCommandBuffer cmd, VulkanEngine* engine)
 				engine->destroyBuffer(newIndirectBuffer);
 				});
 			
-			pass->clearIndirectBuffer = std::move(newIndirectBuffer);
+			pass->completeIndirectBuffer = std::move(newIndirectBuffer);
 			pass->needsIndirectRefresh = false;
 		}
 

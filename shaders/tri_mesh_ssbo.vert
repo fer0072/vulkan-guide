@@ -44,7 +44,7 @@ struct GPUInstance {
 //all object indices
 layout(set = 1, binding = 1) readonly buffer InstanceBuffer{   
 
-	GPUInstance Instances[];
+	uint IDs[];
 } instanceBuffer;
 
 layout(set = 2, binding = 0) uniform GLTFMaterialData{   
@@ -57,7 +57,7 @@ layout(set = 2, binding = 0) uniform GLTFMaterialData{
 
 void main() 
 {	
-	uint index = instanceBuffer.Instances[gl_InstanceIndex].objectID;
+	uint index = instanceBuffer.IDs[gl_InstanceIndex];
 	
 	mat4 modelMatrix = objectBuffer.objects[index].model;
 	gl_Position =  sceneData.viewproj * modelMatrix * vec4(vPosition_uvx.xyz, 1.0f);

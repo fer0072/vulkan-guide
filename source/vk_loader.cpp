@@ -367,7 +367,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
             glm::vec3 minpos = position;
             glm::vec3 maxpos = position;
             for (size_t i = initial_vtx; i < vertices.size(); i++) {
-                position_uvx = vertices[initial_vtx].position_uvx;
+                position_uvx = vertices[i].position_uvx;
 				position = glm::vec3(position_uvx.x, position_uvx.y, position_uvx.z);
                 minpos = glm::min(minpos, position);
                 maxpos = glm::max(maxpos, position);

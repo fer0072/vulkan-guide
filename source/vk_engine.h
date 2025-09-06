@@ -62,6 +62,41 @@ struct ComputeEffect {
     ComputePushConstants data;
 };
 
+struct CullParams {
+    glm::mat4 viewMat;
+    glm::mat4 projMat;
+    bool occlusionCull;
+    bool frustrumCull;
+    float drawDist;
+    bool aabb;
+    glm::vec3 aabbMin;
+    glm::vec3 aabbMax;
+};
+
+struct DrawCullData
+{
+    glm::mat4 viewMat;
+    float P00, P11, zNear, zFar; // symmetric projection parameters
+    float frustum[4]; // data for left/right/top/bottom frustum planes
+    float lodBase, lodStep; // lod distance i = base * pow(step, i)
+    float pyramidWidth, pyramidHeight; // depth pyramid size in texels
+
+    uint32_t drawCount;
+
+    int cullingEnabled;
+    int lodEnabled;
+    int occlusionEnabled;
+    int distanceCheck;
+    int AABBcheck;
+    float aabbMin_x;
+    float aabbMin_y;
+    float aabbMin_z;
+    float aabbMax_x;
+    float aabbMax_y;
+    float aabbMax_z;
+
+};
+
 struct FrameData {
     VkSemaphore _swapchainSemaphore, _renderSemaphore;
     VkFence _renderFence;
@@ -153,6 +188,9 @@ public:
     void drawMain(VkCommandBuffer cmd);
     void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView);
 
+    void generateComputeCullCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass, CullParams& cullParams);
+	void computeCullPass(VkCommandBuffer cmd);
+
     void generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass);
     void shadowPass(VkCommandBuffer cmd);
     void forwardPass(VkCommandBuffer cmd);
@@ -214,17 +252,21 @@ public:
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
 
-    VkDescriptorSet _drawImageDescriptors;
     VkDescriptorSetLayout _drawImageDescriptorLayout;
+    VkDescriptorSet _drawImageDescriptors;
 
     DeletionQueue _mainDeletionQueue;
 
     VmaAllocator _allocator; // vma lib allocator
 
+    VkDescriptorSetLayout _cullDataDescriptorSetLayout;
+    VkDescriptorSet _cullDataDescriptorSet;
     VkDescriptorSetLayout _globalDescriptorSetLayout;
     VkDescriptorSet _globalDescriptorSet;
     VkDescriptorSetLayout _objectDataDescriptorSetLayout;
     VkDescriptorSet _objectDataDescriptorSet;
+
+    std::vector<VkBufferMemoryBarrier> postCullBarriers;
 
     GLTFMetallic_Roughness _metalRoughMaterial;
 
@@ -253,6 +295,8 @@ public:
     std::vector<ComputeEffect> _backgroundEffects;
     int _currentBackgroundEffect = 0;
 
+	ComputeEffect _computeCullEffect;
+
     std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> _loadedScenes;
     std::vector<std::shared_ptr<LoadedGLTF>> _brickadiaScene;
 
@@ -274,7 +318,9 @@ private:
 
     void initPipelines();
 
-    void initBackgroundPipelines();
+    void initBackgroundEffects();
+
+    void initComputeCullEffect();
 
     void initDescriptors();
 

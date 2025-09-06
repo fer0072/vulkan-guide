@@ -130,7 +130,7 @@ public:
         std::optional<AllocatedBuffer> GPUInstanceBuffer;
 
         std::optional<AllocatedBuffer> drawIndirectBuffer;
-        std::optional<AllocatedBuffer> clearIndirectBuffer;
+        std::optional<AllocatedBuffer> completeIndirectBuffer;
 
         PassObject* get(Handle<PassObject> handle);
 
@@ -157,7 +157,9 @@ public:
 
 	void updateObject(Handle<RenderObject> handle);
 
-    void uploadObjectData(VkCommandBuffer cmd, VulkanEngine* engine);
+    void prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine);
+
+    void prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine);
 
     RenderObject* getRenderObject(Handle<RenderObject> objectID);
 
@@ -175,9 +177,13 @@ private:
 
     std::vector<DrawMesh> drawMeshes;
 
+    std::vector<VkBufferMemoryBarrier> cullReadyBarriers;
+
 private:
 
     void refreshPass(MeshPass* pass);
 
     void clearDirtyObjects();
+
+    void prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass& meshPass);
 };
