@@ -12,7 +12,7 @@ void RenderScene::prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engi
 	prepareComputeCullData(cmd, engine, forwardOpaquePass);
 	//prepareComputeCullData(cmd, engine, forwardTransparentPass);
 
-	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, cullReadyBarriers.size(), cullReadyBarriers.data(), 0, nullptr);
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, (uint32_t)cullReadyBarriers.size(), cullReadyBarriers.data(), 0, nullptr);
 }
 
 void RenderScene::prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass& meshPass)
@@ -20,9 +20,9 @@ void RenderScene::prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engi
 	// Copy the complete indirect buffer into the one we actually use during rendering. This happens every frame.
 	VkBufferCopy indirectCopy;
 	indirectCopy.dstOffset = 0;
-	indirectCopy.size = meshPass.indirectBatches.size() * sizeof(GPUIndirectObject);
+	indirectCopy.size = meshPass.instanceBatches.size() * sizeof(GPUIndirectObject);
 	indirectCopy.srcOffset = 0;
-	vkCmdCopyBuffer(cmd, meshPass.completeIndirectBuffer.value().buffer, meshPass.drawIndirectBuffer.value().buffer, 1, &indirectCopy);
+	vkCmdCopyBuffer(cmd, meshPass.completeIndirectCommandBuffer.value().buffer, meshPass.drawIndirectBuffer.value().buffer, 1, &indirectCopy);
 
 	//TBD, create compute queue family?
 	VkBufferMemoryBarrier barrier = vkInit::bufferMemoryBarrier(meshPass.drawIndirectBuffer.value().buffer, engine->_graphicsQueueFamily, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
@@ -92,9 +92,9 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 	{
 		MeshPass* pass = passes[i];
 
-		if (!pass->drawIndirectBuffer.has_value() || pass->drawIndirectBuffer.value().size < pass->indirectBatches.size() * sizeof(GPUIndirectObject))
+		if (!pass->drawIndirectBuffer.has_value() || pass->drawIndirectBuffer.value().size < pass->instanceBatches.size() * sizeof(GPUIndirectObject))
 		{
-			pass->drawIndirectBuffer = engine->createBuffer(pass->indirectBatches.size() * sizeof(GPUIndirectObject), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+			pass->drawIndirectBuffer = engine->createBuffer(pass->instanceBatches.size() * sizeof(GPUIndirectObject), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
 			engine->_mainDeletionQueue.push_function([=]() {
 				engine->destroyBuffer(pass->drawIndirectBuffer.value());
@@ -127,62 +127,62 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 	{
 		MeshPass* pass = passes[i];
 
-		if (pass->needsIndirectRefresh && pass->indirectBatches.size() > 0)
+		if (pass->needsInstanceCommandsBufferRefresh && pass->instanceBatches.size() > 0)
 		{
-			AllocatedBuffer newIndirectBuffer = engine->createBuffer(pass->indirectBatches.size() * sizeof(GPUIndirectObject), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+			AllocatedBuffer newGPUIndirectCommandBuffer = engine->createBuffer(pass->instanceBatches.size() * sizeof(GPUIndirectObject), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-			GPUIndirectObject* indirectData = (GPUIndirectObject*)engine->mapBuffer(newIndirectBuffer);
-			for (int i = 0; i < pass->indirectBatches.size(); i++) {
+			GPUIndirectObject* indirectData = (GPUIndirectObject*)engine->mapBuffer(newGPUIndirectCommandBuffer);
+			for (int i = 0; i < pass->instanceBatches.size(); i++) {
 
-				IndirectBatch indirectBatch = pass->indirectBatches[i];
+				InstanceBatch instanceBatch = pass->instanceBatches[i];
 
-				indirectData[i].command.firstInstance = indirectBatch.first;
+				indirectData[i].command.firstInstance = instanceBatch.firstInstance;
 				indirectData[i].command.instanceCount = 0;
-				indirectData[i].command.firstIndex = getMesh(indirectBatch.meshID)->firstIndex;
-				indirectData[i].command.vertexOffset = getMesh(indirectBatch.meshID)->firstVertex;
-				indirectData[i].command.indexCount = getMesh(indirectBatch.meshID)->indexCount;
+				indirectData[i].command.firstIndex = getMesh(instanceBatch.meshID)->firstIndex;
+				indirectData[i].command.vertexOffset = getMesh(instanceBatch.meshID)->firstVertex;
+				indirectData[i].command.indexCount = getMesh(instanceBatch.meshID)->indexCount;
 				indirectData[i].objectID = 0;
 				indirectData[i].batchID = i;
 			}
-			engine->unmapBuffer(newIndirectBuffer);
+			engine->unmapBuffer(newGPUIndirectCommandBuffer);
 			engine->getCurrentFrame()._deletionQueue.push_function([=]() {
-				engine->destroyBuffer(newIndirectBuffer);
+				engine->destroyBuffer(newGPUIndirectCommandBuffer);
 				});
 			
-			pass->completeIndirectBuffer = std::move(newIndirectBuffer);
-			pass->needsIndirectRefresh = false;
+			pass->completeIndirectCommandBuffer = std::move(newGPUIndirectCommandBuffer);
+			pass->needsInstanceCommandsBufferRefresh = false;
 		}
 
-		if (pass->needsInstanceRefresh && pass->flatBatches.size() > 0)
+		if (pass->needsGPUInstanceBufferRefresh && pass->flatBatches.size() > 0)
 		{
-			AllocatedBuffer newInstanceBuffer = engine->createBuffer(pass->flatBatches.size() * sizeof(GPUInstance), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+			AllocatedBuffer newGPUIndirectCommandBuffer = engine->createBuffer(pass->flatBatches.size() * sizeof(GPUInstance), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-			GPUInstance* instanceData = (GPUInstance*)engine->mapBuffer(newInstanceBuffer);
+			GPUInstance* instanceData = (GPUInstance*)engine->mapBuffer(newGPUIndirectCommandBuffer);
 
-			int dataIndex = 0;
-			for (int i = 0; i < pass->indirectBatches.size(); i++) {
-				IndirectBatch indirectBatch = pass->indirectBatches[i];
+			uint32_t dataIndex = 0;
+			for (uint32_t i = 0; i < pass->instanceBatches.size(); i++) {
+				InstanceBatch instanceBatch = pass->instanceBatches[i];
 
-				for (int flatBatchIndex = 0; flatBatchIndex < indirectBatch.count; flatBatchIndex++)
+				for (uint32_t flatBatchIndex = 0; flatBatchIndex < instanceBatch.instanceCount; flatBatchIndex++)
 				{
-					instanceData[dataIndex].objectID = pass->get(pass->flatBatches[indirectBatch.first + flatBatchIndex].object)->objectDataIndex;
+					instanceData[dataIndex].objectID = pass->get(pass->flatBatches[instanceBatch.firstInstance + flatBatchIndex].object)->objectID.handle;
 					instanceData[dataIndex].batchID = i;
 					dataIndex++;
 				}
 			}
 
-			engine->unmapBuffer(newInstanceBuffer);
+			engine->unmapBuffer(newGPUIndirectCommandBuffer);
 			engine->getCurrentFrame()._deletionQueue.push_function([=]() {
-				engine->destroyBuffer(newInstanceBuffer);
+				engine->destroyBuffer(newGPUIndirectCommandBuffer);
 				});
 
 			VkBufferCopy instanceCopy;
 			instanceCopy.srcOffset = 0;
 			instanceCopy.dstOffset = 0;
 			instanceCopy.size = pass->flatBatches.size() * sizeof(GPUInstance);
-			vkCmdCopyBuffer(cmd, newInstanceBuffer.buffer, pass->GPUInstanceBuffer.value().buffer, 1, &instanceCopy);
+			vkCmdCopyBuffer(cmd, newGPUIndirectCommandBuffer.buffer, pass->GPUInstanceBuffer.value().buffer, 1, &instanceCopy);
 
-			pass->needsInstanceRefresh = false;
+			pass->needsGPUInstanceBufferRefresh = false;
 
 			VkBufferMemoryBarrier barrier = vkInit::bufferMemoryBarrier(pass->GPUInstanceBuffer.value().buffer, engine->_graphicsQueueFamily, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
 
@@ -200,7 +200,7 @@ RenderObject* RenderScene::getRenderObject(Handle<RenderObject> objectID)
 	return &allRenderObjects[objectID.handle];
 }
 
-Handle<DrawMesh> RenderScene::getMeshHandle(GeoSurface* surface, std::shared_ptr<MeshAsset> meshAsset)
+Handle<DrawMesh> RenderScene::generateDrawMesh(GeoSurface* surface, std::shared_ptr<MeshAsset> meshAsset)
 {
 	auto it = cachedMeshAssets.find(meshAsset.get());
 	if (it == cachedMeshAssets.end())
@@ -234,8 +234,8 @@ void RenderScene::mergeMeshes(VulkanEngine* engine)
 		startIndices.first = totalVertices;
 		startIndices.second = totalIndices;
 
-		totalVertices += meshAsset->meshBuffers.vertexBuffer.size;
-		totalIndices += meshAsset->meshBuffers.indexBuffer.size;
+		totalVertices += (uint32_t)meshAsset->meshBuffers.vertexBuffer.size;
+		totalIndices += (uint32_t)meshAsset->meshBuffers.indexBuffer.size;
 	}
 
 	for (auto& drawMesh : drawMeshes)
@@ -288,8 +288,8 @@ void RenderScene::buildBatches()
 
 void RenderScene::buildPassBatches(MeshPass* pass)
 {	
-	pass->needsIndirectRefresh = true;
-	pass->needsInstanceRefresh = true;
+	pass->needsInstanceCommandsBufferRefresh = true;
+	pass->needsGPUInstanceBufferRefresh = true;
 
 	/* 
 	*  Create object list of the pass.
@@ -300,15 +300,11 @@ void RenderScene::buildPassBatches(MeshPass* pass)
 		for (auto object : pass->unbatchedObjects)
 		{
 			RenderScene::PassObject newObject;
-			newObject.objectDataIndex = object.handle;
-			RenderObject* renderObject = getRenderObject(object);
-			newObject.meshID = renderObject->meshID;
-			newObject.material = renderObject->material;
+			newObject.objectID = object;
 
-			uint32_t handle = pass->objects.size();
+			uint32_t handle = (uint32_t)pass->objects.size();
 			pass->objects.push_back(newObject);
 			newObjects.push_back(handle);
-			getRenderObject(object)->passIndices[pass->passType] = static_cast<int32_t>(handle);
 		}
 
 		pass->unbatchedObjects.clear();
@@ -323,19 +319,19 @@ void RenderScene::buildPassBatches(MeshPass* pass)
 	{
 		for (auto object : newObjects) {
 			{
-				RenderScene::FlatBatch newBatch;
-
 				PassObject passObject = pass->objects[object];
+				RenderObject* renderObject = getRenderObject(passObject.objectID);
+				MaterialInstance* material = renderObject->getMaterial();
+
+				uint64_t pipelineHash = std::hash<uint64_t>()(uint64_t(material->pipeline->pipeline));
+				uint64_t setHash = std::hash<uint64_t>()((uint64_t)material->materialSet);
+
+				uint32_t mathash = static_cast<uint32_t>(pipelineHash | setHash);
+
+				uint32_t meshmat = uint64_t(mathash) ^ uint64_t(renderObject->meshID.handle);
+
+				RenderScene::FlatBatch newBatch;
 				newBatch.object.handle = object;
-
-				uint64_t pipelineHash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline->pipeline));
-				uint64_t layoutHash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline->pipeline));
-				uint64_t setHash = std::hash<uint64_t>()((uint64_t)passObject.material.lock()->materialSet);
-
-				uint32_t mathash = static_cast<uint32_t>(pipelineHash | layoutHash | setHash);
-
-				uint32_t meshmat = uint64_t(mathash) ^ uint64_t(passObject.meshID.handle);
-
 				//pack mesh id and material into 64 bits				
 				newBatch.sortKey = uint64_t(meshmat) | (uint64_t(passObject.customKey) << 32);
 
@@ -381,74 +377,76 @@ void RenderScene::buildPassBatches(MeshPass* pass)
 	}
 
 	/*
-	*  Merge flat batches into indirect batches.
+	*  Merge flat batches into instance batches.
 	*/
 	{
-		pass->indirectBatches.clear();
+		pass->instanceBatches.clear();
 		
 		if (pass->flatBatches.size() > 0)
 		{
 			PassObject* firstObject = pass->get(pass->flatBatches[0].object);
-			RenderScene::IndirectBatch newBatch;
-			newBatch.first = 0;
-			newBatch.count = 1;
-			newBatch.material = firstObject->material;
-			newBatch.meshID = firstObject->meshID;
-			pass->indirectBatches.push_back(newBatch);
+			RenderObject* firstRenderObject = getRenderObject(firstObject->objectID);
+			RenderScene::InstanceBatch newBatch;
+			newBatch.firstInstance = 0;
+			newBatch.instanceCount = 1;
+			newBatch.material = firstRenderObject->material;
+			newBatch.meshID = firstRenderObject->meshID;
+			pass->instanceBatches.push_back(newBatch);
 
 			for(int i = 1; i < pass->flatBatches.size(); i++)
 			{
 				PassObject* passObject = pass->get(pass->flatBatches[i].object);
-				RenderScene::IndirectBatch& lastBatch = pass->indirectBatches.back();
+				RenderObject* renderObject = getRenderObject(passObject->objectID);
+				RenderScene::InstanceBatch& lastInstanceBatch = pass->instanceBatches.back();
 
-				bool isSameMaterial = *passObject->getMaterial() == *lastBatch.getMaterial();
-				bool isSameMesh = getMesh(passObject->meshID)->meshAsset.lock() == getMesh(lastBatch.meshID)->meshAsset.lock();
+				bool isSameMaterial = *renderObject->getMaterial() == *lastInstanceBatch.getMaterial();
+				bool isSameMesh = getMesh(renderObject->meshID)->meshAsset.lock() == getMesh(lastInstanceBatch.meshID)->meshAsset.lock();
 
 				if (isSameMaterial && isSameMesh)
 				{
-					lastBatch.count++;
+					lastInstanceBatch.instanceCount++;
 				}
 				else
 				{
-					newBatch.first = i;
-					newBatch.count = 1;
-					newBatch.material = passObject->material;
-					newBatch.meshID = passObject->meshID;
-					pass->indirectBatches.push_back(newBatch);
+					newBatch.firstInstance = i;
+					newBatch.instanceCount = 1;
+					newBatch.material = renderObject->material;
+					newBatch.meshID = renderObject->meshID;
+					pass->instanceBatches.push_back(newBatch);
 				}
 			}
 		}
 	}
 
 	/*
-	*  Merge indirect batches into multi batches.
+	*  Merge instance batches into indirect batches.
 	*/
 	{
-		pass->multiBatches.clear();
+		pass->indirectBatches.clear();
 
-		MultiBatch newBatch;
+		IndirectBatch newBatch;
 		newBatch.count = 1;
-		newBatch.first = 0;
-		pass->multiBatches.push_back(newBatch);
+		newBatch.firstInstanceBatch = 0;
+		pass->indirectBatches.push_back(newBatch);
 
-		for(int i = 1; i < pass->indirectBatches.size(); i++)
+		for(int i = 1; i < pass->instanceBatches.size(); i++)
 		{
-			MultiBatch& lastMultiBatch = pass->multiBatches.back();
-			IndirectBatch lastBatch = pass->indirectBatches[lastMultiBatch.first];
-			IndirectBatch nextBatch = pass->indirectBatches[i];
+			IndirectBatch& lastIndirectBatch = pass->indirectBatches.back();
+			InstanceBatch lastInstanceBatch = pass->instanceBatches[lastIndirectBatch.firstInstanceBatch];
+			InstanceBatch nextInstanceBatch = pass->instanceBatches[i];
 
-			bool isMeshCompatible = getMesh(lastBatch.meshID)->isMerged && getMesh(nextBatch.meshID)->isMerged;
-			bool isSameMat = *lastBatch.getMaterial() == *nextBatch.getMaterial();
+			bool isMeshCompatible = getMesh(lastInstanceBatch.meshID)->isMerged && getMesh(nextInstanceBatch.meshID)->isMerged;
+			bool isSameMat = *lastInstanceBatch.getMaterial() == *nextInstanceBatch.getMaterial();
 
 			if (isSameMat && isMeshCompatible)
 			{
-				lastMultiBatch.count++;
+				lastIndirectBatch.count++;
 			}
 			else
 			{
 				newBatch.count = 1;
-				newBatch.first = i;
-				pass->multiBatches.push_back(newBatch);
+				newBatch.firstInstanceBatch = i;
+				pass->indirectBatches.push_back(newBatch);
 			}
 		}
 	}

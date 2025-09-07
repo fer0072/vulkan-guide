@@ -54,10 +54,13 @@ struct RenderObject
     Handle<DrawMesh> meshID;
     std::weak_ptr<MaterialInstance> material;
 
-    PerPassData<int32_t> passIndices;
-
     Bounds bounds;
     glm::mat4 transform;
+
+    MaterialInstance* getMaterial()
+    {
+        return material.lock().get();
+    }
 };
 
 class RenderScene
@@ -71,18 +74,11 @@ public:
 
     struct PassObject 
     {
-        Handle<DrawMesh> meshID;
-        std::weak_ptr<MaterialInstance> material;
+        Handle<RenderObject> objectID;
         uint32_t customKey;
-        uint32_t objectDataIndex;
-
-        MaterialInstance* getMaterial()
-        {
-            return material.lock().get();
-        }
     };
 
-    // Batch that is not merged yet.
+	// Batch that is not merged yet, can use to generate regular draw calls.
     struct FlatBatch 
     {
         Handle<PassObject> object;
@@ -94,11 +90,12 @@ public:
         }
     };
 
-    struct IndirectBatch {
+    // Can use to generate instanced draw calls.
+    struct InstanceBatch {
         Handle<DrawMesh> meshID;
         std::weak_ptr <MaterialInstance> material;
-        uint32_t first;
-        uint32_t count;
+        uint32_t firstInstance;
+        uint32_t instanceCount;
 
         MaterialInstance* getMaterial()
         {
@@ -106,45 +103,44 @@ public:
 		}
     };
 
-    struct MultiBatch {
-        uint32_t first;
+    // Can use to generate indirect draw calls.
+    struct IndirectBatch {
+        uint32_t firstInstanceBatch;
         uint32_t count;
     };
 
     struct MeshPass 
     {
-        std::vector<RenderScene::MultiBatch> multiBatches;
-        std::vector<RenderScene::IndirectBatch> indirectBatches;
         std::vector<Handle<RenderObject>> unbatchedObjects;
-        std::vector<RenderScene::FlatBatch> flatBatches;
         std::vector<PassObject> objects;
-        std::vector<Handle<PassObject>> reusableObjects;
-        std::vector<Handle<PassObject>> objectsToDelete;
+
+        std::vector<RenderScene::FlatBatch> flatBatches;
+        std::vector<RenderScene::InstanceBatch> instanceBatches;
+        std::vector<RenderScene::IndirectBatch> indirectBatches;
 
         std::optional<AllocatedBuffer> compactedInstanceBuffer;
         std::optional<AllocatedBuffer> GPUInstanceBuffer;
 
         std::optional<AllocatedBuffer> drawIndirectBuffer;
-        std::optional<AllocatedBuffer> completeIndirectBuffer;
+        std::optional<AllocatedBuffer> completeIndirectCommandBuffer;
 
         PassObject* get(Handle<PassObject> handle);
 
         MaterialPass passType;
 
-        bool needsIndirectRefresh = false;
-        bool needsInstanceRefresh = false;
+        bool needsInstanceCommandsBufferRefresh = false;
+        bool needsGPUInstanceBufferRefresh = false;
     };
 
     std::vector<RenderObject> allRenderObjects;
-
-    MeshPass shadowPass;
-    MeshPass forwardOpaquePass;
-    MeshPass forwardTransparentPass;
-
     // Merged vertex buffer, index buffer and object data buffer that contains data of all render objects.
     std::optional<AllocatedBuffer> mergedVertexBuffer;
     std::optional<AllocatedBuffer> mergedIndexBuffer;
     std::optional<AllocatedBuffer> objectDataBuffer;
+
+    MeshPass shadowPass;
+    MeshPass forwardOpaquePass;
+    MeshPass forwardTransparentPass;
 
 public:
 
@@ -152,15 +148,11 @@ public:
 
     void prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine);
 
-    RenderObject* getRenderObject(Handle<RenderObject> objectID);
-
-    Handle<DrawMesh> getMeshHandle(GeoSurface* surface, std::shared_ptr<MeshAsset> meshAsset);
-
-    DrawMesh* getMesh(Handle<DrawMesh> meshID);
-
     void mergeMeshes(VulkanEngine* engine);
 
     void buildBatches();
+
+    Handle<DrawMesh> generateDrawMesh(GeoSurface* surface, std::shared_ptr<MeshAsset> meshAsset);
 
 private:
 
@@ -176,4 +168,9 @@ private:
     void buildPassBatches(MeshPass* pass);
 
     void prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass& meshPass);
+
+    RenderObject* getRenderObject(Handle<RenderObject> objectID);
+
+    DrawMesh* getMesh(Handle<DrawMesh> meshID);
+
 };

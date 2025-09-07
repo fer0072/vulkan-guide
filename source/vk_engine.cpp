@@ -540,7 +540,7 @@ bool isVisible(const RenderObject& obj, const glm::mat4& viewproj) {
 
 void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass, CullParams& cullParams)
 {
-    if (meshPass.indirectBatches.size() == 0) return;
+    if (meshPass.instanceBatches.size() == 0) return;
 
     _cullDataDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _cullDataDescriptorSetLayout);
 
@@ -654,21 +654,21 @@ void VulkanEngine::shadowPass(VkCommandBuffer cmd)
 void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass)
 {
     //TBD
-    if (meshPass.indirectBatches.size() > 0)
+    if (meshPass.instanceBatches.size() > 0)
     {
         DrawMesh* lastMesh = nullptr;
         VkPipeline lastPipeline = VK_NULL_HANDLE;
         VkPipelineLayout lastLayout = VK_NULL_HANDLE;
         VkDescriptorSet lastMaterialSet = VK_NULL_HANDLE;
 
-        for (int i = 0; i < meshPass.multiBatches.size(); i++)
+        for (int i = 0; i < meshPass.indirectBatches.size(); i++)
         {
-            auto& multiBatch = meshPass.multiBatches[i];
-            auto& indirectBatch = meshPass.indirectBatches[multiBatch.first];
+            auto& indirectBatch = meshPass.indirectBatches[i];
+            auto& instanceBatch = meshPass.instanceBatches[indirectBatch.firstInstanceBatch];
 
-            VkPipeline newPipeline = indirectBatch.getMaterial()->pipeline->pipeline;
-            VkPipelineLayout newLayout = indirectBatch.getMaterial()->pipeline->layout;
-            VkDescriptorSet newDescriptorSet = indirectBatch.getMaterial()->materialSet;
+            VkPipeline newPipeline = instanceBatch.getMaterial()->pipeline->pipeline;
+            VkPipelineLayout newLayout = instanceBatch.getMaterial()->pipeline->layout;
+            VkDescriptorSet newDescriptorSet = instanceBatch.getMaterial()->materialSet;
 
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newPipeline);
 
@@ -680,7 +680,7 @@ void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPa
             vkCmdBindVertexBuffers(cmd, 0, 1, &_renderScene.mergedVertexBuffer.value().buffer, &offset);
             vkCmdBindIndexBuffer(cmd, _renderScene.mergedIndexBuffer.value().buffer, 0, VK_INDEX_TYPE_UINT32);
 
-            vkCmdDrawIndexedIndirect(cmd, meshPass.drawIndirectBuffer.value().buffer, multiBatch.first * sizeof(GPUIndirectObject), multiBatch.count, sizeof(GPUIndirectObject));
+            vkCmdDrawIndexedIndirect(cmd, meshPass.drawIndirectBuffer.value().buffer, indirectBatch.firstInstanceBatch * sizeof(GPUIndirectObject), indirectBatch.count, sizeof(GPUIndirectObject));
 
             _engineStats.drawcallCount++;
         }
@@ -990,15 +990,8 @@ GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<V
     const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 
     GPUMeshBuffers newSurface;
-
-	newSurface.original = std::make_shared<OriginalMesh>();
-    newSurface.original->_indices = std::vector(indices.begin(), indices.end());
-    newSurface.original->_vertices = std::vector(vertices.begin(), vertices.end());
-    
     newSurface.vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
     
-    // TBD 不indirect draw的话就设置现在这个flag，要indirect draw的话就设置VK_BUFFER_USAGE_TRANSFER_SRC_BIT
-    //newSurface.indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
     newSurface.indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
     AllocatedBuffer staging = createBuffer(vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
@@ -1624,8 +1617,7 @@ void MeshNode::generateRenderObject(const glm::mat4& topMatrix, RenderScene& sce
         newObject.material = s.material;
         newObject.bounds = s.bounds;
         newObject.transform = nodeMatrix;
-        newObject.meshID = scene.getMeshHandle(&s, mesh);
-        newObject.passIndices.clear(-1);
+        newObject.meshID = scene.generateDrawMesh(&s, mesh);
         Handle<RenderObject> handle;
         handle.handle = static_cast<uint32_t>(scene.allRenderObjects.size());
 

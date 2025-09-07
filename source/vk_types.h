@@ -118,19 +118,11 @@ struct Vertex {
 	glm::vec4 color;
 };
 
-struct OriginalMesh
-{
-    std::vector<Vertex> _vertices;
-    std::vector<uint32_t> _indices;
-};
-
 // holds the resources needed for a mesh
 struct GPUMeshBuffers {
     
     AllocatedBuffer indexBuffer;
     AllocatedBuffer vertexBuffer;
-
-    std::shared_ptr<OriginalMesh> original;
 };
 
 // push constants for our mesh object draws
