@@ -455,7 +455,7 @@ void RenderScene::refreshPass(MeshPass* pass)
 				uint64_t layoutHash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline->pipeline));
 				uint64_t setHash = std::hash<uint64_t>()((uint64_t)passObject.material.lock()->materialSet);
 
-				uint32_t mathash = static_cast<uint32_t>(pipelineHash | (layoutHash << 16) | setHash);
+				uint32_t mathash = static_cast<uint32_t>(pipelineHash | layoutHash | setHash);
 
 				uint32_t meshmat = uint64_t(mathash) ^ uint64_t(passObject.meshID.handle);
 
