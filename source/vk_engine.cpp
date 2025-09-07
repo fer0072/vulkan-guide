@@ -670,7 +670,6 @@ void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPa
             VkPipelineLayout newLayout = indirectBatch.getMaterial()->pipeline->layout;
             VkDescriptorSet newDescriptorSet = indirectBatch.getMaterial()->materialSet;
 
-            DrawMesh* drawMesh = _renderScene.getMesh(indirectBatch.meshID);
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newPipeline);
 
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 0, 1, &_globalDescriptorSet, 0, nullptr);
@@ -1487,6 +1486,7 @@ void VulkanEngine::initDescriptors()
 		writer.addImageDescriptorSet(0, _drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
         writer.updateDescriptorSets(_device, _drawImageDescriptors);
     }
+
 	for (int i = 0; i < FRAME_OVERLAP; i++) {
 		// create a descriptor pool
 		std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frame_sizes = {
@@ -1607,7 +1607,6 @@ MaterialInstance GLTFMetallic_Roughness::updateMaterialDescriptorSets(VkDevice d
 
 	matData.materialSet = descriptorAllocator.allocate(device,materialLayout);
     
-   
     writer.clear();
     writer.addBufferDescriptorSet(0,resources.dataBuffer,sizeof(MaterialConstants),resources.dataBufferOffset,VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
@@ -1620,13 +1619,13 @@ void MeshNode::generateRenderObject(const glm::mat4& topMatrix, RenderScene& sce
 {
     glm::mat4 nodeMatrix = topMatrix * worldTransform;
 
-    for (auto& s : mesh->surfaces) {
+    for (GeoSurface& s : mesh->surfaces) {
         // TBD
         RenderObject newObject;
-        newObject.material = std::make_shared<MaterialInstance>(s.material->data);
+        newObject.material = s.material;
         newObject.bounds = s.bounds;
         newObject.transform = nodeMatrix;
-        newObject.meshID = scene.getMeshHandle(s, mesh);
+        newObject.meshID = scene.getMeshHandle(&s, mesh);
         newObject.updateIndex = (uint32_t)-1;
         newObject.passIndices.clear(-1);
         Handle<RenderObject> handle;
@@ -1634,7 +1633,7 @@ void MeshNode::generateRenderObject(const glm::mat4& topMatrix, RenderScene& sce
 
         scene.allRenderObjects.push_back(newObject);
 
-        if (s.material->data.passType == MaterialPass::forwardTransparent) 
+        if (s.material->passType == MaterialPass::forwardTransparent) 
         {
             scene.forwardTransparentPass.unbatchedObjects.push_back(handle);
         }

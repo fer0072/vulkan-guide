@@ -8,7 +8,7 @@
 
 #include <array>
 #include <vector>
-#include <unordered_map>
+#include <map>
 
 template<typename T>
 struct Handle 
@@ -37,7 +37,6 @@ struct GPUInstance {
 struct DrawMesh
 {
     uint32_t indexCount;
-    uint32_t vertexCount;
     uint32_t firstIndex;
     uint32_t firstVertex;
     bool isMerged = false;
@@ -53,7 +52,7 @@ struct DrawMesh
 struct RenderObject 
 {
     Handle<DrawMesh> meshID;
-    std::shared_ptr<MaterialInstance> material;
+    std::weak_ptr<MaterialInstance> material;
 
 	// Mark if the object is in the dirty objects list that waited to be updated to gpu.
     uint32_t updateIndex = 0;
@@ -163,7 +162,7 @@ public:
 
     RenderObject* getRenderObject(Handle<RenderObject> objectID);
 
-    Handle<DrawMesh> getMeshHandle(const GeoSurface& surface, std::shared_ptr<MeshAsset> meshAsset);
+    Handle<DrawMesh> getMeshHandle(GeoSurface* surface, std::shared_ptr<MeshAsset> meshAsset);
 
     DrawMesh* getMesh(Handle<DrawMesh> meshID);
 
@@ -173,7 +172,8 @@ public:
 
 private:
 
-    std::unordered_map<MeshAsset*, Handle<DrawMesh>> convertedMesh;
+    // MeshAssets and its start index in the merged buffers.
+	std::map<MeshAsset*, std::pair<uint32_t, uint32_t> /*index in the merged vertex buffer and index buffer*/> cachedMeshAssets; 
 
     std::vector<DrawMesh> drawMeshes;
 

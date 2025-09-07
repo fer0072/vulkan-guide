@@ -139,7 +139,6 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 				IndirectBatch indirectBatch = pass->indirectBatches[i];
 
 				indirectData[i].command.firstInstance = indirectBatch.first;
-				// TBD
 				indirectData[i].command.instanceCount = 0;
 				indirectData[i].command.firstIndex = getMesh(indirectBatch.meshID)->firstIndex;
 				indirectData[i].command.vertexOffset = getMesh(indirectBatch.meshID)->firstVertex;
@@ -248,29 +247,24 @@ RenderObject* RenderScene::getRenderObject(Handle<RenderObject> objectID)
 	return &allRenderObjects[objectID.handle];
 }
 
-Handle<DrawMesh> RenderScene::getMeshHandle(const GeoSurface& surface, std::shared_ptr<MeshAsset> meshAsset)
+Handle<DrawMesh> RenderScene::getMeshHandle(GeoSurface* surface, std::shared_ptr<MeshAsset> meshAsset)
 {
-	Handle<DrawMesh> handle;
-	auto it = convertedMesh.find(meshAsset.get());
-	if (it == convertedMesh.end())
+	auto it = cachedMeshAssets.find(meshAsset.get());
+	if (it == cachedMeshAssets.end())
 	{
-		uint32_t index = static_cast<uint32_t>(drawMeshes.size());
-
-		DrawMesh newMesh;
-		newMesh.meshAsset = meshAsset;
-		newMesh.firstIndex = surface.startIndex;
-		newMesh.firstVertex = surface.startVertex;
-		newMesh.vertexCount = static_cast<uint32_t>(meshAsset->meshBuffers.original->_vertices.size());
-		newMesh.indexCount = static_cast<uint32_t>(meshAsset->meshBuffers.original->_indices.size());
-
-		drawMeshes.push_back(newMesh);
-
-		handle.handle = index;
-		convertedMesh[meshAsset.get()] = handle;
+		cachedMeshAssets[meshAsset.get()] = std::make_pair(0, 0);
 	}
-	else {
-		handle = (*it).second;
-	}
+
+	DrawMesh newMesh;
+	newMesh.meshAsset = meshAsset;
+	newMesh.indexCount = surface->indicesCount;
+	newMesh.firstIndex = surface->startIndex;
+	newMesh.firstVertex = 0;
+
+	Handle<DrawMesh> handle;
+	uint32_t index = static_cast<uint32_t>(drawMeshes.size());
+	drawMeshes.push_back(newMesh);
+	handle.handle = index;
 	return handle;
 }
 
@@ -279,15 +273,25 @@ void RenderScene::mergeMeshes(VulkanEngine* engine)
 	uint32_t totalVertices = 0;
 	uint32_t totalIndices = 0;
 
-	for(DrawMesh& mesh: drawMeshes)
+	for(auto& cache: cachedMeshAssets)
 	{
-		mesh.firstVertex = totalVertices;
-		mesh.firstIndex = totalIndices;
+		MeshAsset* meshAsset = cache.first;
+		std::pair<uint32_t, uint32_t>& startIndices = cache.second;
 
-		totalVertices += mesh.vertexCount;
-		totalIndices += mesh.indexCount;
+		startIndices.first = totalVertices;
+		startIndices.second = totalIndices;
 
-		mesh.isMerged = true;
+		totalVertices += meshAsset->meshBuffers.vertexBuffer.size;
+		totalIndices += meshAsset->meshBuffers.indexBuffer.size;
+	}
+
+	for (auto& drawMesh : drawMeshes)
+	{
+		MeshAsset* meshAsset = drawMesh.getMeshAsset();
+		std::pair<uint32_t, uint32_t> startIndices = cachedMeshAssets[meshAsset];
+		drawMesh.firstVertex = startIndices.first;
+		drawMesh.firstIndex += startIndices.second;
+		drawMesh.isMerged = true;
 	}
 
 	mergedVertexBuffer = engine->createBuffer(totalVertices * sizeof(Vertex), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
@@ -295,22 +299,24 @@ void RenderScene::mergeMeshes(VulkanEngine* engine)
 	mergedIndexBuffer = engine->createBuffer(totalIndices * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
 	engine->immediateSubmit([&](VkCommandBuffer cmd) {
-		uint32_t vertexsize = 0, indexsize = 0;
-		for (DrawMesh& mesh : drawMeshes)
+		for (auto& cache : cachedMeshAssets)
 		{
+			MeshAsset* meshAsset = cache.first;
+			std::pair<uint32_t, uint32_t> startIndices = cache.second;
+
 			VkBufferCopy vertexCopy;
-			vertexCopy.dstOffset = mesh.firstVertex * sizeof(Vertex);
-			vertexCopy.size = mesh.vertexCount * sizeof(Vertex);
+			vertexCopy.dstOffset = startIndices.first * sizeof(Vertex);
+			vertexCopy.size = meshAsset->meshBuffers.vertexBuffer.size;
 			vertexCopy.srcOffset = 0;
 
-			vkCmdCopyBuffer(cmd, mesh.meshAsset.lock()->meshBuffers.vertexBuffer.buffer, mergedVertexBuffer->buffer, 1, &vertexCopy);
+			vkCmdCopyBuffer(cmd, meshAsset->meshBuffers.vertexBuffer.buffer, mergedVertexBuffer->buffer, 1, &vertexCopy);
 
 			VkBufferCopy indexCopy;
-			indexCopy.dstOffset = mesh.firstIndex * sizeof(uint32_t);
-			indexCopy.size = mesh.indexCount * sizeof(uint32_t);
+			indexCopy.dstOffset = startIndices.second * sizeof(uint32_t);
+			indexCopy.size = meshAsset->meshBuffers.indexBuffer.size;
 			indexCopy.srcOffset = 0;
 
-			vkCmdCopyBuffer(cmd, mesh.meshAsset.lock()->meshBuffers.indexBuffer.buffer, mergedIndexBuffer->buffer, 1, &indexCopy);
+			vkCmdCopyBuffer(cmd, meshAsset->meshBuffers.indexBuffer.buffer, mergedIndexBuffer->buffer, 1, &indexCopy);
 		}
 		});
 
@@ -349,10 +355,11 @@ void RenderScene::refreshPass(MeshPass* pass)
 			RenderScene::PassObject passObject = pass->objects[object.handle];
 			newBatch.object = object;
 
-			uint64_t pipelinehash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline));
-			uint64_t sethash = std::hash<uint64_t>()((uint64_t)passObject.material.lock() ->materialSet);
+			uint64_t pipelineHash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline->pipeline));
+			uint64_t pipelineLayoutHash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline->layout));
+			uint64_t setHash = std::hash<uint64_t>()((uint64_t)passObject.material.lock() ->materialSet);
 
-			uint32_t mathash = static_cast<uint32_t>(pipelinehash ^ sethash);
+			uint32_t mathash = static_cast<uint32_t>(pipelineHash | (pipelineLayoutHash << 16) | setHash);
 
 			uint32_t meshmat = uint64_t(mathash) ^ uint64_t(passObject.meshID.handle);
 
@@ -431,7 +438,7 @@ void RenderScene::refreshPass(MeshPass* pass)
 		pass->unbatchedObjects.clear();
 		pass->unbatchedObjects.shrink_to_fit();
 	}
-
+	
 	/*
 	*  Create the flat draw batch list based on the object list create above.
 	*/
@@ -445,10 +452,11 @@ void RenderScene::refreshPass(MeshPass* pass)
 				PassObject passObject = pass->objects[object];
 				newBatch.object.handle = object;
 
-				uint64_t pipelinehash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline));
-				uint64_t sethash = std::hash<uint64_t>()((uint64_t)passObject.material.lock()->materialSet);
+				uint64_t pipelineHash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline->pipeline));
+				uint64_t layoutHash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline->pipeline));
+				uint64_t setHash = std::hash<uint64_t>()((uint64_t)passObject.material.lock()->materialSet);
 
-				uint32_t mathash = static_cast<uint32_t>(pipelinehash ^ sethash);
+				uint32_t mathash = static_cast<uint32_t>(pipelineHash | (layoutHash << 16) | setHash);
 
 				uint32_t meshmat = uint64_t(mathash) ^ uint64_t(passObject.meshID.handle);
 
@@ -501,7 +509,7 @@ void RenderScene::refreshPass(MeshPass* pass)
 	*/
 	{
 		pass->indirectBatches.clear();
-
+		
 		if (pass->flatBatches.size() > 0)
 		{
 			PassObject* firstObject = pass->get(pass->flatBatches[0].object);
@@ -518,7 +526,7 @@ void RenderScene::refreshPass(MeshPass* pass)
 				RenderScene::IndirectBatch& lastBatch = pass->indirectBatches.back();
 
 				bool isSameMaterial = *passObject->getMaterial() == *lastBatch.getMaterial();
-				bool isSameMesh = passObject->meshID.handle == lastBatch.meshID.handle;
+				bool isSameMesh = getMesh(passObject->meshID)->meshAsset.lock() == getMesh(lastBatch.meshID)->meshAsset.lock();
 
 				if (isSameMaterial && isSameMesh)
 				{

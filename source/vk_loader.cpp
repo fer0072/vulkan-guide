@@ -196,7 +196,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
     std::vector<std::shared_ptr<Node>> nodes;
     std::vector<AllocatedImage> images;
     std::vector<TextureID> imageIDs;
-    std::vector<std::shared_ptr<GLTFMaterial>> materials;
+    std::vector<std::shared_ptr<MaterialInstance>> materials;
 
     // load all textures
     for (fastgltf::Image& image : gltf.images) {
@@ -225,10 +225,6 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
     //
 //> load_material
     for (fastgltf::Material& mat : gltf.materials) {
-        std::shared_ptr<GLTFMaterial> newMat = std::make_shared<GLTFMaterial>();
-        materials.push_back(newMat);
-        file.materials[mat.name.c_str()] = newMat;
-
         GLTFMetallic_Roughness::MaterialConstants constants;
         constants.colorFactors.x = mat.pbrData.baseColorFactor[0];
         constants.colorFactors.y = mat.pbrData.baseColorFactor[1];
@@ -238,7 +234,6 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
         constants.metal_rough_factors.x = mat.pbrData.metallicFactor;
         constants.metal_rough_factors.y = mat.pbrData.roughnessFactor;
        
-
         MaterialPass passType = MaterialPass::forwardOpaque;
         if (mat.alphaMode == fastgltf::AlphaMode::Blend) {
             passType = MaterialPass::forwardTransparent;
@@ -268,8 +263,11 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
       
 		// write material parameters to buffer
 		sceneMaterialConstants[data_index] = constants;
+
         // build material
-        newMat->data = engine->_metalRoughMaterial.updateMaterialDescriptorSets(engine->_device, passType, materialResources, file.descriptorPool);
+        std::shared_ptr<MaterialInstance> newMat = std::make_shared<MaterialInstance>(engine->_metalRoughMaterial.updateMaterialDescriptorSets(engine->_device, passType, materialResources, file.descriptorPool));
+        materials.push_back(newMat);
+        file.materials[mat.name.c_str()] = newMat;
 
         data_index++;
     }
@@ -292,8 +290,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
         for (auto&& p : mesh.primitives) {
             GeoSurface newSurface;
             newSurface.startIndex = (uint32_t)indices.size();
-            newSurface.startVertex = (uint32_t)vertices.size();
-            newSurface.count = (uint32_t)gltf.accessors[p.indicesAccessor.value()].count;
+            newSurface.indicesCount = (uint32_t)gltf.accessors[p.indicesAccessor.value()].count;
 
             size_t initial_vtx = vertices.size();
 

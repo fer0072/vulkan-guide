@@ -17,16 +17,11 @@ struct Bounds {
     glm::vec3 extents;
 };
 
-struct GLTFMaterial {
-    MaterialInstance data;
-};
-
 struct GeoSurface {
     uint32_t startIndex;
-    uint32_t startVertex;
-    uint32_t count;
+    uint32_t indicesCount;
     Bounds bounds;
-	std::shared_ptr<GLTFMaterial> material;
+	std::shared_ptr<MaterialInstance> material;
 };
 
 struct MeshAsset {
@@ -42,7 +37,7 @@ struct LoadedGLTF : public IRenderable {
     std::unordered_map<std::string, std::shared_ptr<MeshAsset>> meshes;
     std::unordered_map<std::string, std::shared_ptr<Node>> nodes;
     std::unordered_map<std::string, AllocatedImage> images;
-    std::unordered_map<std::string, std::shared_ptr<GLTFMaterial>> materials;
+    std::unordered_map<std::string, std::shared_ptr<MaterialInstance>> materials;
 
     // nodes that dont have a parent, for iterating through the file in tree order
     std::vector<std::shared_ptr<Node>> topNodes;
