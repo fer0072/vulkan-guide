@@ -436,6 +436,36 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 //< load_graph
 }
 
+void MeshNode::generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene)
+{
+    glm::mat4 nodeMatrix = topMatrix * worldTransform;
+
+    for (GeoSurface& s : mesh->surfaces) {
+        RenderObject newObject;
+        newObject.material = s.material;
+        newObject.bounds = s.bounds;
+        newObject.transform = nodeMatrix;
+        newObject.meshID = scene.generateDrawMesh(&s, mesh);
+        Handle<RenderObject> handle;
+        handle.handle = static_cast<uint32_t>(scene.allRenderObjects.size());
+
+        scene.allRenderObjects.push_back(newObject);
+
+        if (s.material->passType == MaterialPass::forwardTransparent)
+        {
+            scene.forwardTransparentPass.unbatchedObjects.push_back(handle);
+        }
+        else
+        {
+            scene.forwardOpaquePass.unbatchedObjects.push_back(handle);
+            scene.shadowPass.unbatchedObjects.push_back(handle);
+        }
+    }
+
+    // recurse down
+    Node::generateRenderObject(topMatrix, scene);
+}
+
 void LoadedGLTF::generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene)
 {
     // create allRenderObjects from the scenenodes

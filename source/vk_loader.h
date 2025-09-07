@@ -31,6 +31,14 @@ struct MeshAsset {
     GPUMeshBuffers meshBuffers;
 };
 
+
+struct MeshNode : public Node {
+
+    std::shared_ptr<MeshAsset> mesh;
+
+    virtual void generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene) override;
+};
+
 struct LoadedGLTF : public IRenderable {
 
     // storage for all the data on a given gltf file

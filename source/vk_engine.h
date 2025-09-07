@@ -62,6 +62,7 @@ struct ComputeEffect {
     ComputePushConstants data;
 };
 
+//> Compute cull related data.
 struct CullParams {
     glm::mat4 viewMat;
     glm::mat4 projMat;
@@ -96,6 +97,7 @@ struct DrawCullData
     float aabbMax_z;
 
 };
+//< Compute cull related data.
 
 struct FrameData {
     VkSemaphore _swapchainSemaphore, _renderSemaphore;
@@ -151,13 +153,6 @@ struct GLTFMetallic_Roughness {
     void clearResources(VkDevice device);
 
     MaterialInstance updateMaterialDescriptorSets(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
-};
-
-struct MeshNode : public Node {
-
-    std::shared_ptr<MeshAsset> mesh;
-
-    virtual void generateRenderObject(const glm::mat4& topMatrix, RenderScene& scene) override;
 };
 
 struct TextureID {
