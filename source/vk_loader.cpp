@@ -36,7 +36,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                     imagesize.height = height;
                     imagesize.depth = 1;
 
-                    newImage = engine->createImage(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT,false);
+                    newImage = AllocatedImage::createImage(engine, data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT,false);
 
                     stbi_image_free(data);
                 }
@@ -50,7 +50,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                     imagesize.height = height;
                     imagesize.depth = 1;
 
-                    newImage = engine->createImage(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT,false);
+                    newImage = AllocatedImage::createImage(engine, data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT,false);
 
                     stbi_image_free(data);
                 }
@@ -73,7 +73,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                                        imagesize.height = height;
                                        imagesize.depth = 1;
 
-                                       newImage = engine->createImage(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
+                                       newImage = AllocatedImage::createImage(engine, data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
                                            VK_IMAGE_USAGE_SAMPLED_BIT,false);
 
                                        stbi_image_free(data);
@@ -217,7 +217,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 
 //> load_buffer
     // create buffer to hold the material data
-    file.materialDataBuffer = engine->createBuffer(sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
+    file.materialDataBuffer = AllocatedBuffer::createBuffer(engine->_allocator, sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
     int data_index = 0;
     GLTFMetallic_Roughness::MaterialConstants* sceneMaterialConstants = (GLTFMetallic_Roughness::MaterialConstants*)file.materialDataBuffer.info.pMappedData;
@@ -479,9 +479,8 @@ void LoadedGLTF::clearAll()
     VkDevice dv = creator->_device;
 
     for (auto& [k, v] : meshes) {
-
-        creator->destroyBuffer(v->meshBuffers.indexBuffer);
-        creator->destroyBuffer(v->meshBuffers.vertexBuffer);
+        AllocatedBuffer::destroyBuffer(creator->_allocator,v->meshBuffers.indexBuffer);
+        AllocatedBuffer::destroyBuffer(creator->_allocator, v->meshBuffers.vertexBuffer);
     }
 
     for (auto& [k, v] : images) {
@@ -490,7 +489,7 @@ void LoadedGLTF::clearAll()
             // dont destroy the default images
             continue;
         }
-        creator->destroyImage(v);
+        AllocatedImage::destroyImage(creator->_device, creator->_allocator, v);
     }
 
     for (auto& sampler : samplers) {
@@ -502,5 +501,5 @@ void LoadedGLTF::clearAll()
 
     descriptorPool.destroyPools(dv);
 
-    creator->destroyBuffer(materialBuffer);
+    AllocatedBuffer::destroyBuffer(creator->_allocator, materialBuffer);
 }

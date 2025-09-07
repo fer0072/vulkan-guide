@@ -42,16 +42,16 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 		size_t copySize = allRenderObjects.size() * sizeof(GPUObjectData);
 		if (!objectDataBuffer.has_value() || objectDataBuffer.value().size < copySize)
 		{
-			objectDataBuffer = engine->createBuffer(copySize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+			objectDataBuffer = AllocatedBuffer::createBuffer(engine->_allocator,copySize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 			engine->_mainDeletionQueue.push_function([=]() {
-				engine->destroyBuffer(objectDataBuffer.value());
+				AllocatedBuffer::destroyBuffer(engine->_allocator, objectDataBuffer.value());
 				});
 		}
 
-		AllocatedBuffer newBuffer = engine->createBuffer(copySize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		AllocatedBuffer newBuffer = AllocatedBuffer::createBuffer(engine->_allocator, copySize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-		GPUObjectData* objectSSBO = (GPUObjectData*)engine->mapBuffer(newBuffer);
+		GPUObjectData* objectSSBO = (GPUObjectData*)AllocatedBuffer::mapBuffer(engine->_allocator, newBuffer);
 		for (int i = 0; i < allRenderObjects.size(); i++)
 		{
 			Handle<RenderObject> objHandle;
@@ -65,7 +65,7 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 
 			memcpy(objectSSBO + i, &objectData, sizeof(GPUObjectData));
 		}
-		engine->unmapBuffer(newBuffer);
+		AllocatedBuffer::unmapBuffer(engine->_allocator, newBuffer);
 
 		//copy from the uploaded cpu side instance buffer to the gpu one
 		VkBufferCopy bufferCopy;
@@ -77,7 +77,7 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 		VkBufferMemoryBarrier barrier = vkInit::bufferMemoryBarrier(objectDataBuffer.value().buffer, engine->_graphicsQueueFamily, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT);
 
 		engine->getCurrentFrame()._deletionQueue.push_function([=]() {
-			engine->destroyBuffer(newBuffer);
+			AllocatedBuffer::destroyBuffer(engine->_allocator, newBuffer);
 			});
 
 		uploadBarriers.emplace_back(barrier);
@@ -94,28 +94,28 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 
 		if (!pass->drawIndirectBuffer.has_value() || pass->drawIndirectBuffer.value().size < pass->instanceBatches.size() * sizeof(GPUIndirectObject))
 		{
-			pass->drawIndirectBuffer = engine->createBuffer(pass->instanceBatches.size() * sizeof(GPUIndirectObject), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+			pass->drawIndirectBuffer = AllocatedBuffer::createBuffer(engine->_allocator, pass->instanceBatches.size() * sizeof(GPUIndirectObject), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
 			engine->_mainDeletionQueue.push_function([=]() {
-				engine->destroyBuffer(pass->drawIndirectBuffer.value());
+				AllocatedBuffer::destroyBuffer(engine->_allocator, pass->drawIndirectBuffer.value());
 				});
 		}
 
 		if (!pass->compactedInstanceBuffer.has_value() || pass->compactedInstanceBuffer.value().size < pass->flatBatches.size() * sizeof(uint32_t))
 		{
-			pass->compactedInstanceBuffer = engine->createBuffer(pass->flatBatches.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+			pass->compactedInstanceBuffer = AllocatedBuffer::createBuffer(engine->_allocator, pass->flatBatches.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
 			engine->_mainDeletionQueue.push_function([=]() {
-				engine->destroyBuffer(pass->compactedInstanceBuffer.value());
+				AllocatedBuffer::destroyBuffer(engine->_allocator, pass->compactedInstanceBuffer.value());
 				});
 		}
 
 		if (!pass->GPUInstanceBuffer.has_value() || pass->GPUInstanceBuffer.value().size < pass->flatBatches.size() * sizeof(GPUInstance))
 		{
-			pass->GPUInstanceBuffer = engine->createBuffer(pass->flatBatches.size() * sizeof(GPUInstance), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+			pass->GPUInstanceBuffer = AllocatedBuffer::createBuffer(engine->_allocator, pass->flatBatches.size() * sizeof(GPUInstance), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
 			engine->_mainDeletionQueue.push_function([=]() {
-				engine->destroyBuffer(pass->GPUInstanceBuffer.value());
+				AllocatedBuffer::destroyBuffer(engine->_allocator, pass->GPUInstanceBuffer.value());
 				});
 		}
 	}
@@ -129,9 +129,9 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 
 		if (pass->needsInstanceCommandsBufferRefresh && pass->instanceBatches.size() > 0)
 		{
-			AllocatedBuffer newGPUIndirectCommandBuffer = engine->createBuffer(pass->instanceBatches.size() * sizeof(GPUIndirectObject), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+			AllocatedBuffer newGPUIndirectCommandBuffer = AllocatedBuffer::createBuffer(engine->_allocator, pass->instanceBatches.size() * sizeof(GPUIndirectObject), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-			GPUIndirectObject* indirectData = (GPUIndirectObject*)engine->mapBuffer(newGPUIndirectCommandBuffer);
+			GPUIndirectObject* indirectData = (GPUIndirectObject*)AllocatedBuffer::mapBuffer(engine->_allocator, newGPUIndirectCommandBuffer);
 			for (int i = 0; i < pass->instanceBatches.size(); i++) {
 
 				InstanceBatch instanceBatch = pass->instanceBatches[i];
@@ -144,9 +144,9 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 				indirectData[i].objectID = 0;
 				indirectData[i].batchID = i;
 			}
-			engine->unmapBuffer(newGPUIndirectCommandBuffer);
+			AllocatedBuffer::unmapBuffer(engine->_allocator, newGPUIndirectCommandBuffer);
 			engine->getCurrentFrame()._deletionQueue.push_function([=]() {
-				engine->destroyBuffer(newGPUIndirectCommandBuffer);
+				AllocatedBuffer::destroyBuffer(engine->_allocator, newGPUIndirectCommandBuffer);
 				});
 			
 			pass->completeIndirectCommandBuffer = std::move(newGPUIndirectCommandBuffer);
@@ -155,9 +155,9 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 
 		if (pass->needsGPUInstanceBufferRefresh && pass->flatBatches.size() > 0)
 		{
-			AllocatedBuffer newGPUIndirectCommandBuffer = engine->createBuffer(pass->flatBatches.size() * sizeof(GPUInstance), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+			AllocatedBuffer newGPUIndirectCommandBuffer = AllocatedBuffer::createBuffer(engine->_allocator, pass->flatBatches.size() * sizeof(GPUInstance), VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-			GPUInstance* instanceData = (GPUInstance*)engine->mapBuffer(newGPUIndirectCommandBuffer);
+			GPUInstance* instanceData = (GPUInstance*)AllocatedBuffer::mapBuffer(engine->_allocator, newGPUIndirectCommandBuffer);
 
 			uint32_t dataIndex = 0;
 			for (uint32_t i = 0; i < pass->instanceBatches.size(); i++) {
@@ -171,9 +171,9 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 				}
 			}
 
-			engine->unmapBuffer(newGPUIndirectCommandBuffer);
+			AllocatedBuffer::unmapBuffer(engine->_allocator, newGPUIndirectCommandBuffer);
 			engine->getCurrentFrame()._deletionQueue.push_function([=]() {
-				engine->destroyBuffer(newGPUIndirectCommandBuffer);
+				AllocatedBuffer::destroyBuffer(engine->_allocator, newGPUIndirectCommandBuffer);
 				});
 
 			VkBufferCopy instanceCopy;
@@ -247,9 +247,9 @@ void RenderScene::mergeMeshes(VulkanEngine* engine)
 		drawMesh.isMerged = true;
 	}
 
-	mergedVertexBuffer = engine->createBuffer(totalVertices * sizeof(Vertex), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+	mergedVertexBuffer = AllocatedBuffer::createBuffer(engine->_allocator, totalVertices * sizeof(Vertex), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
-	mergedIndexBuffer = engine->createBuffer(totalIndices * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+	mergedIndexBuffer = AllocatedBuffer::createBuffer(engine->_allocator, totalIndices * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
 	engine->immediateSubmit([&](VkCommandBuffer cmd) {
 		for (auto& cache : cachedMeshAssets)
@@ -274,8 +274,8 @@ void RenderScene::mergeMeshes(VulkanEngine* engine)
 		});
 
 	engine->_mainDeletionQueue.push_function([=]() {
-		engine->destroyBuffer(mergedVertexBuffer.value());
-		engine->destroyBuffer(mergedIndexBuffer.value());
+		AllocatedBuffer::destroyBuffer(engine->_allocator, mergedVertexBuffer.value());
+		AllocatedBuffer::destroyBuffer(engine->_allocator, mergedIndexBuffer.value());
 		});
 }
 

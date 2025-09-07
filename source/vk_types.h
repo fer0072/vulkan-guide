@@ -22,6 +22,8 @@
 #include <glm/vec4.hpp>
 //< intro 
 
+class VulkanEngine;
+
 // we will add our main reusable types here
 struct AllocatedImage {
     VkImage image;
@@ -29,6 +31,10 @@ struct AllocatedImage {
     VmaAllocation allocation;
     VkExtent3D imageExtent;
     VkFormat imageFormat;
+
+    static AllocatedImage createImage(VulkanEngine* engine, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+    static AllocatedImage createImage(VulkanEngine* engine, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+    static void destroyImage(VkDevice device, VmaAllocator allocator, const AllocatedImage& img);
 };
 
 struct AllocatedBuffer {
@@ -36,6 +42,11 @@ struct AllocatedBuffer {
     VmaAllocation allocation;
     VmaAllocationInfo info;
 	size_t size = 0;
+
+    static AllocatedBuffer createBuffer(VmaAllocator allocator, size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+    static void* mapBuffer(VmaAllocator allocator, const AllocatedBuffer& buffer);
+    static void unmapBuffer(VmaAllocator allocator, const AllocatedBuffer& buffer);
+    static void destroyBuffer(VmaAllocator allocator, const AllocatedBuffer& buffer);
 };
 
 struct GPUGLTFMaterial {

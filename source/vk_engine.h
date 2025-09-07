@@ -160,7 +160,6 @@ struct TextureID {
 };
 
 struct TextureCache {
-
     std::vector<VkDescriptorImageInfo> cache;
     TextureID addTexture(const VkImageView& image, VkSampler sampler);
 };
@@ -202,17 +201,7 @@ public:
     FrameData& getCurrentFrame();
     FrameData& getLastFrame();
 
-    AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-	void* mapBuffer(const AllocatedBuffer& buffer);
-    void unmapBuffer(const AllocatedBuffer& buffer);
-
-    AllocatedImage createImage(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-    AllocatedImage createImage(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-
     void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
-
-    void destroyImage(const AllocatedImage& img);
-    void destroyBuffer(const AllocatedBuffer& buffer);
 
 public:
 

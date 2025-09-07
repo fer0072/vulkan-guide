@@ -8,6 +8,7 @@ add_executable (simple-engine
   vk_loader.h
   vk_loader.cpp
   vk_types.h
+  vk_types.cpp
   vk_initializers.cpp
   vk_initializers.h
   vk_images.h
