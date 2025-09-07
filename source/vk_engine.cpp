@@ -1620,13 +1620,11 @@ void MeshNode::generateRenderObject(const glm::mat4& topMatrix, RenderScene& sce
     glm::mat4 nodeMatrix = topMatrix * worldTransform;
 
     for (GeoSurface& s : mesh->surfaces) {
-        // TBD
         RenderObject newObject;
         newObject.material = s.material;
         newObject.bounds = s.bounds;
         newObject.transform = nodeMatrix;
         newObject.meshID = scene.getMeshHandle(&s, mesh);
-        newObject.updateIndex = (uint32_t)-1;
         newObject.passIndices.clear(-1);
         Handle<RenderObject> handle;
         handle.handle = static_cast<uint32_t>(scene.allRenderObjects.size());
@@ -1642,8 +1640,6 @@ void MeshNode::generateRenderObject(const glm::mat4& topMatrix, RenderScene& sce
 			scene.forwardOpaquePass.unbatchedObjects.push_back(handle);
 			scene.shadowPass.unbatchedObjects.push_back(handle);
         }
-
-        scene.updateObject(handle);
     }
        
     // recurse down

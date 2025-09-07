@@ -54,9 +54,6 @@ struct RenderObject
     Handle<DrawMesh> meshID;
     std::weak_ptr<MaterialInstance> material;
 
-	// Mark if the object is in the dirty objects list that waited to be updated to gpu.
-    uint32_t updateIndex = 0;
-
     PerPassData<int32_t> passIndices;
 
     Bounds bounds;
@@ -74,9 +71,8 @@ public:
 
     struct PassObject 
     {
-        std::weak_ptr<MaterialInstance> material;
         Handle<DrawMesh> meshID;
-        int32_t builtbatch;
+        std::weak_ptr<MaterialInstance> material;
         uint32_t customKey;
         uint32_t objectDataIndex;
 
@@ -139,8 +135,6 @@ public:
         bool needsInstanceRefresh = false;
     };
 
-	// Dirty objects is objects whose data has not been updated to the gpu yet.
-    std::vector<Handle<RenderObject>> dirtyRenderObjects;
     std::vector<RenderObject> allRenderObjects;
 
     MeshPass shadowPass;
@@ -153,8 +147,6 @@ public:
     std::optional<AllocatedBuffer> objectDataBuffer;
 
 public:
-
-	void updateObject(Handle<RenderObject> handle);
 
     void prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine);
 
@@ -181,9 +173,7 @@ private:
 
 private:
 
-    void refreshPass(MeshPass* pass);
-
-    void clearDirtyObjects();
+    void buildPassBatches(MeshPass* pass);
 
     void prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass& meshPass);
 };

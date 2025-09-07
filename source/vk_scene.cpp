@@ -38,7 +38,6 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 	/*
 	*   Upload object data to GPU.
 	*/
-	if (dirtyRenderObjects.size() > 0)
 	{
 		size_t copySize = allRenderObjects.size() * sizeof(GPUObjectData);
 		if (!objectDataBuffer.has_value() || objectDataBuffer.value().size < copySize)
@@ -82,7 +81,6 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 			});
 
 		uploadBarriers.emplace_back(barrier);
-		clearDirtyObjects();
 	}
 
 	/*
@@ -197,51 +195,6 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 	uploadBarriers.clear();
 }
 
-void RenderScene::updateObject(Handle<RenderObject> objectID)
-{
-	auto& passIndices = getRenderObject(objectID)->passIndices;
-	if (passIndices[MaterialPass::forwardOpaque] != -1)
-	{
-		Handle<PassObject> obj;
-		obj.handle = passIndices[MaterialPass::forwardOpaque];
-
-		forwardOpaquePass.objectsToDelete.push_back(obj);
-		forwardOpaquePass.unbatchedObjects.push_back(objectID);
-
-		passIndices[MaterialPass::forwardOpaque] = -1;
-	}
-
-	if (passIndices[MaterialPass::shadow] != -1)
-	{
-		Handle<PassObject> obj;
-		obj.handle = passIndices[MaterialPass::shadow];
-
-		shadowPass.objectsToDelete.push_back(obj);
-		shadowPass.unbatchedObjects.push_back(objectID);
-
-		passIndices[MaterialPass::shadow] = -1;
-	}
-
-	if (passIndices[MaterialPass::forwardTransparent] != -1)
-	{
-		Handle<PassObject> obj;
-		obj.handle = passIndices[MaterialPass::forwardTransparent];
-
-		forwardTransparentPass.objectsToDelete.push_back(obj);
-		forwardTransparentPass.unbatchedObjects.push_back(objectID);
-		
-		passIndices[MaterialPass::forwardTransparent] = -1;
-	}
-
-
-	if (getRenderObject(objectID)->updateIndex == (uint32_t)-1)
-	{
-		getRenderObject(objectID)->updateIndex = static_cast<uint32_t>(dirtyRenderObjects.size());
-
-		dirtyRenderObjects.push_back(objectID);
-	}
-}
-
 RenderObject* RenderScene::getRenderObject(Handle<RenderObject> objectID)
 {
 	return &allRenderObjects[objectID.handle];
@@ -328,77 +281,15 @@ void RenderScene::mergeMeshes(VulkanEngine* engine)
 
 void RenderScene::buildBatches()
 {
-	//refreshPass(&shadowPass);
-	refreshPass(&forwardOpaquePass);
-	refreshPass(&forwardTransparentPass);
+	//buildPassBatches(&shadowPass);
+	buildPassBatches(&forwardOpaquePass);
+	buildPassBatches(&forwardTransparentPass);
 }
 
-void RenderScene::refreshPass(MeshPass* pass)
+void RenderScene::buildPassBatches(MeshPass* pass)
 {	
 	pass->needsIndirectRefresh = true;
 	pass->needsInstanceRefresh = true;
-
-	/*
-	*  Delete objects that are already batched.
-	*/
-	if (pass->objectsToDelete.size() > 0)
-	{
-		//Create the flat batches that contains the objects to be deleted, so that we can do the deletion on the flatBatches array directly
-		std::vector<RenderScene::FlatBatch> deletionBatches;
-
-		deletionBatches.reserve(pass->objectsToDelete.size());
-
-		for (auto object : pass->objectsToDelete) {
-			pass->reusableObjects.push_back(object);
-			RenderScene::FlatBatch newBatch;
-
-			RenderScene::PassObject passObject = pass->objects[object.handle];
-			newBatch.object = object;
-
-			uint64_t pipelineHash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline->pipeline));
-			uint64_t pipelineLayoutHash = std::hash<uint64_t>()(uint64_t(passObject.material.lock()->pipeline->layout));
-			uint64_t setHash = std::hash<uint64_t>()((uint64_t)passObject.material.lock() ->materialSet);
-
-			uint32_t mathash = static_cast<uint32_t>(pipelineHash | (pipelineLayoutHash << 16) | setHash);
-
-			uint32_t meshmat = uint64_t(mathash) ^ uint64_t(passObject.meshID.handle);
-
-			//pack mesh id and material into 64 bits				
-			newBatch.sortKey = uint64_t(meshmat) | (uint64_t(passObject.customKey) << 32);
-
-			pass->objects[object.handle].customKey = 0;
-			pass->objects[object.handle].material.reset();
-			pass->objects[object.handle].meshID.handle = -1;
-			pass->objects[object.handle].objectDataIndex = -1;
-
-			deletionBatches.push_back(newBatch);
-		}
-
-		pass->objectsToDelete.clear();
-
-		// Sort the deletion batches based on the sort key.
-		{
-			std::sort(deletionBatches.begin(), deletionBatches.end(), [](const RenderScene::FlatBatch& A, const RenderScene::FlatBatch& B) {
-				if (A.sortKey < B.sortKey) { return true; }
-				else if (A.sortKey == B.sortKey) { return A.object.handle < B.object.handle; }
-				else { return false; }
-				});
-		}
-
-		// Do deletion, now the flatBatches array doesn't contain the deleted objects anymore.
-		{
-			std::vector<RenderScene::FlatBatch> newbatches;
-			newbatches.reserve(pass->flatBatches.size());
-			{
-				std::set_difference(pass->flatBatches.begin(), pass->flatBatches.end(), deletionBatches.begin(), deletionBatches.end(), std::back_inserter(newbatches), [](const RenderScene::FlatBatch& A, const RenderScene::FlatBatch& B) {
-					if (A.sortKey < B.sortKey) { return true; }
-					else if (A.sortKey == B.sortKey) { return A.object.handle < B.object.handle; }
-					else { return false; }
-					});
-			}
-			pass->flatBatches = std::move(newbatches);
-		}
-	}
 
 	/* 
 	*  Create object list of the pass.
@@ -414,23 +305,9 @@ void RenderScene::refreshPass(MeshPass* pass)
 			newObject.meshID = renderObject->meshID;
 			newObject.material = renderObject->material;
 
-			uint32_t handle = -1;
-
-			//reuse handle
-			if (pass->reusableObjects.size() > 0)
-			{
-				handle = pass->reusableObjects.back().handle;
-				pass->reusableObjects.pop_back();
-				pass->objects[handle] = newObject;
-			}
-			else
-			{
-				handle = pass->objects.size();
-				pass->objects.push_back(newObject);
-			}
-
+			uint32_t handle = pass->objects.size();
+			pass->objects.push_back(newObject);
 			newObjects.push_back(handle);
-
 			getRenderObject(object)->passIndices[pass->passType] = static_cast<int32_t>(handle);
 		}
 
@@ -575,16 +452,6 @@ void RenderScene::refreshPass(MeshPass* pass)
 			}
 		}
 	}
-}
-
-void RenderScene::clearDirtyObjects()
-{
-	for (auto obj : dirtyRenderObjects)
-	{
-		getRenderObject(obj)->updateIndex = (uint32_t)-1;
-	}
-	dirtyRenderObjects.clear();
-	dirtyRenderObjects.shrink_to_fit();
 }
 
 DrawMesh* RenderScene::getMesh(Handle<DrawMesh> meshID)
