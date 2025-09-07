@@ -76,9 +76,9 @@ public:
     {
         std::weak_ptr<MaterialInstance> material;
         Handle<DrawMesh> meshID;
-        Handle<RenderObject> original;
         int32_t builtbatch;
         uint32_t customKey;
+        uint32_t objectDataIndex;
 
         MaterialInstance* getMaterial()
         {

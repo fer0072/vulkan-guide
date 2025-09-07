@@ -167,7 +167,7 @@ void RenderScene::prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine)
 
 				for (int flatBatchIndex = 0; flatBatchIndex < indirectBatch.count; flatBatchIndex++)
 				{
-					instanceData[dataIndex].objectID = pass->get(pass->flatBatches[indirectBatch.first + flatBatchIndex].object)->original.handle;
+					instanceData[dataIndex].objectID = pass->get(pass->flatBatches[indirectBatch.first + flatBatchIndex].object)->objectDataIndex;
 					instanceData[dataIndex].batchID = i;
 					dataIndex++;
 				}
@@ -369,7 +369,7 @@ void RenderScene::refreshPass(MeshPass* pass)
 			pass->objects[object.handle].customKey = 0;
 			pass->objects[object.handle].material.reset();
 			pass->objects[object.handle].meshID.handle = -1;
-			pass->objects[object.handle].original.handle = -1;
+			pass->objects[object.handle].objectDataIndex = -1;
 
 			deletionBatches.push_back(newBatch);
 		}
@@ -409,8 +409,7 @@ void RenderScene::refreshPass(MeshPass* pass)
 		for (auto object : pass->unbatchedObjects)
 		{
 			RenderScene::PassObject newObject;
-
-			newObject.original = object;
+			newObject.objectDataIndex = object.handle;
 			RenderObject* renderObject = getRenderObject(object);
 			newObject.meshID = renderObject->meshID;
 			newObject.material = renderObject->material;
