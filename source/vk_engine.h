@@ -166,128 +166,49 @@ struct TextureCache {
 
 class VulkanEngine {
 public:
-
     // singleton style getter.multiple engines is not supported
     static VulkanEngine& Get();
 
     // initializes everything in the engine
     void init();
 
-    // shuts down the engine
-    void cleanup();
-
-    // draw loop
-    void draw();
-    void updateSceneData();
-    void drawMain(VkCommandBuffer cmd);
-    void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView);
-
-    void generateComputeCullCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass, CullParams& cullParams);
-	void computeCullPass(VkCommandBuffer cmd);
-
-    void generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass);
-    void shadowPass(VkCommandBuffer cmd);
-    void forwardPass(VkCommandBuffer cmd);
-
     // run main loop
     void run();
 
-    void initRenderObjects();
+    // shuts down the engine
+    void cleanup();
 
-    // upload a mesh into a pair of gpu buffers. If descriptor allocator is not
-    // null, it will also create a descriptor that points to the vertex buffer
-    GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+    void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
     FrameData& getCurrentFrame();
     FrameData& getLastFrame();
 
-    void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
+    const VkDevice& getDevice() const { return _device; }
+
+    const uint32_t getGraphicsQueueFamily() const { return _graphicsQueueFamily; }
+
+    const VmaAllocator getAllocator() const { return _allocator; }
 
 public:
-
-    bool _isInitialized = false;
-    int _frameNumber = 0;
-
-    VkExtent2D _windowExtent = VkExtent2D(1700, 900);
-
-    struct SDL_Window* _window = nullptr;
-
-    VkInstance _instance;
-    VkDebugUtilsMessengerEXT _debug_messenger;
-    VkPhysicalDevice _chosenGPU;
-    VkDevice _device;
-
-    VkQueue _graphicsQueue;
-    uint32_t _graphicsQueueFamily;
-
-    AllocatedBuffer _defaultGLTFMaterialData;
-
-    FrameData _frames[FRAME_OVERLAP];
-
-    VkSurfaceKHR _surface;
-    VkSwapchainKHR _swapchain;
-    VkFormat _swapchainImageFormat;
-    VkExtent2D _swapchainExtent;
-    VkExtent2D _drawExtent;
-    VkDescriptorPool _descriptorPool;
-
-    DescriptorAllocator _globalDescriptorAllocator;
-
-    std::vector<VkImage> _swapchainImages;
-    std::vector<VkImageView> _swapchainImageViews;
-
-    VkDescriptorSetLayout _drawImageDescriptorLayout;
-    VkDescriptorSet _drawImageDescriptors;
-
     DeletionQueue _mainDeletionQueue;
 
-    VmaAllocator _allocator; // vma lib allocator
-
-    VkDescriptorSetLayout _cullDataDescriptorSetLayout;
-    VkDescriptorSet _cullDataDescriptorSet;
-    VkDescriptorSetLayout _globalDescriptorSetLayout;
-    VkDescriptorSet _globalDescriptorSet;
-    VkDescriptorSetLayout _objectDataDescriptorSetLayout;
-    VkDescriptorSet _objectDataDescriptorSet;
-
-    std::vector<VkBufferMemoryBarrier> postCullBarriers;
-
-    GLTFMetallic_Roughness _metalRoughMaterial;
-
-    // draw resources
+    //> draw resources
     AllocatedImage _drawImage;
     AllocatedImage _depthImage;
-
-    // immediate submit structures
-    VkFence _immFence;
-    VkCommandBuffer _immCommandBuffer;
-    VkCommandPool _immCommandPool;
 
     std::unordered_map<std::string, std::shared_ptr<AllocatedImage>> _defaultImages;
     std::unordered_map<std::string, std::shared_ptr<VkSampler>> _defaultSamplers;
 
+    VkDescriptorSetLayout _globalDescriptorSetLayout;
+    VkDescriptorSetLayout _objectDataDescriptorSetLayout;
+
+    GLTFMetallic_Roughness _metalRoughMaterial;
+
     TextureCache _texCache;
-
-	RenderScene _renderScene;
-
-    GPU_sceneData _sceneData;
-
-    Camera _mainCamera;
-
-    EngineStats _engineStats;
-
-    std::vector<ComputeEffect> _backgroundEffects;
-    int _currentBackgroundEffect = 0;
-
-	ComputeEffect _computeCullEffect;
-
-    std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> _loadedScenes;
-    std::vector<std::shared_ptr<LoadedGLTF>> _brickadiaScene;
-
-    bool _shouldResizeWindow = false;
-    bool _shouldFreezeRendering = false;
+    //< draw resources    
 
 private:
+	//> Init behaviours.
     void initVulkan();
 
     void initSwapchain();
@@ -295,8 +216,6 @@ private:
     void createSwapchain(uint32_t width, uint32_t height);
 
     void resizeSwapchain();
-
-    void destroySwapchain();
 
     void initCommands();
 
@@ -314,5 +233,93 @@ private:
 
     void initImgui();
 
+    void initRenderObjects();
+
     void createDefaultObjects();
+	//< Init behaviours.
+
+    void destroySwapchain();
+
+	//> Draw related behaviours.
+    // draw loop
+    void draw();
+
+    void updateSceneData();
+
+    void drawMain(VkCommandBuffer cmd);
+
+    void drawImgui(VkCommandBuffer cmd, VkImageView targetImageView);
+
+    void generateComputeCullCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass, CullParams& cullParams);
+
+    void computeCullPass(VkCommandBuffer cmd);
+
+    void generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass);
+
+    void shadowPass(VkCommandBuffer cmd);
+
+    void forwardPass(VkCommandBuffer cmd);
+	//< Draw related behaviours.
+
+private:
+
+    bool _isInitialized = false;
+    int _frameNumber = 0;
+
+    bool _shouldResizeWindow = false;
+    bool _shouldFreezeRendering = false;
+
+    VkExtent2D _windowExtent = VkExtent2D(1700, 900);
+
+    struct SDL_Window* _window = nullptr;
+
+    VkInstance _instance;
+    VkDebugUtilsMessengerEXT _debug_messenger;
+    VkPhysicalDevice _chosenGPU;
+    VkDevice _device;
+
+    VkQueue _graphicsQueue;
+    uint32_t _graphicsQueueFamily;
+
+    FrameData _frames[FRAME_OVERLAP];
+
+    VkSurfaceKHR _surface;
+    VkSwapchainKHR _swapchain;
+    VkFormat _swapchainImageFormat;
+    VkExtent2D _swapchainExtent;
+    VkExtent2D _drawExtent;
+    VkDescriptorPool _descriptorPool;
+
+    VmaAllocator _allocator; // vma lib allocator
+    DescriptorAllocator _globalDescriptorAllocator;
+    
+    RenderScene _renderScene;
+    GPU_sceneData _sceneData;
+    Camera _mainCamera;
+
+    std::vector<VkImage> _swapchainImages;
+    std::vector<VkImageView> _swapchainImageViews;
+
+    std::vector<ComputeEffect> _backgroundEffects;
+    int _currentBackgroundEffect = 0;
+    ComputeEffect _computeCullEffect;
+
+    VkDescriptorSetLayout _drawImageDescriptorLayout;
+    VkDescriptorSet _drawImageDescriptors;
+    VkDescriptorSetLayout _cullDataDescriptorSetLayout;
+    VkDescriptorSet _cullDataDescriptorSet;
+    
+    VkDescriptorSet _globalDescriptorSet;
+    VkDescriptorSet _objectDataDescriptorSet;
+
+    std::vector<VkBufferMemoryBarrier> postCullBarriers;
+
+    // immediate submit structures
+    VkFence _immFence;
+    VkCommandBuffer _immCommandBuffer;
+    VkCommandPool _immCommandPool;
+
+    EngineStats _engineStats;    
+
+    std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> _loadedScenes;
 };

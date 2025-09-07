@@ -125,6 +125,48 @@ VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter)
     }
 }
 
+GPUMeshBuffers uploadMesh(VulkanEngine* engine, std::span<uint32_t> indices, std::span<Vertex> vertices)
+{
+    const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
+    const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
+
+    GPUMeshBuffers newSurface;
+    newSurface.vertexBuffer = AllocatedBuffer::createBuffer(engine->getAllocator(), vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+    newSurface.indexBuffer = AllocatedBuffer::createBuffer(engine->getAllocator(), indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+    AllocatedBuffer staging = AllocatedBuffer::createBuffer(engine->getAllocator(), vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+    void* data = AllocatedBuffer::mapBuffer(engine->getAllocator(), staging);
+    // copy vertex buffer
+    memcpy(data, vertices.data(), vertexBufferSize);
+    // copy index buffer
+    memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
+    AllocatedBuffer::unmapBuffer(engine->getAllocator(), staging);
+
+    engine->immediateSubmit([&](VkCommandBuffer cmd) {
+        VkBufferCopy vertexCopy{ 0 };
+        vertexCopy.dstOffset = 0;
+        vertexCopy.srcOffset = 0;
+        vertexCopy.size = vertexBufferSize;
+
+        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
+
+        VkBufferCopy indexCopy{ 0 };
+        indexCopy.dstOffset = 0;
+        indexCopy.srcOffset = vertexBufferSize;
+        indexCopy.size = indexBufferSize;
+
+        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
+        });
+
+    engine->getCurrentFrame()._deletionQueue.push_function([=]() {
+        AllocatedBuffer::destroyBuffer(engine->getAllocator(), staging);
+        });
+
+    return newSurface;
+}
+
 std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::string_view filePath)
 {
     fmt::print("Loading GLTF: {}", filePath);
@@ -171,7 +213,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 } };
 
-    file.descriptorPool.init(engine->_device, uint32_t(gltf.materials.size()), sizes);
+    file.descriptorPool.init(engine->getDevice(), uint32_t(gltf.materials.size()), sizes);
 
     // load samplers
     for (fastgltf::Sampler& sampler : gltf.samplers) {
@@ -186,7 +228,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
         sampl.mipmapMode= extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
 
         VkSampler newSampler;
-        vkCreateSampler(engine->_device, &sampl, nullptr, &newSampler);
+        vkCreateSampler(engine->getDevice(), &sampl, nullptr, &newSampler);
 
         file.samplers.push_back(newSampler);
     }
@@ -217,7 +259,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 
 //> load_buffer
     // create buffer to hold the material data
-    file.materialDataBuffer = AllocatedBuffer::createBuffer(engine->_allocator, sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
+    file.materialDataBuffer = AllocatedBuffer::createBuffer(engine->getAllocator(), sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
     int data_index = 0;
     GLTFMetallic_Roughness::MaterialConstants* sceneMaterialConstants = (GLTFMetallic_Roughness::MaterialConstants*)file.materialDataBuffer.info.pMappedData;
@@ -265,7 +307,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
 		sceneMaterialConstants[data_index] = constants;
 
         // build material
-        std::shared_ptr<MaterialInstance> newMat = std::make_shared<MaterialInstance>(engine->_metalRoughMaterial.updateMaterialDescriptorSets(engine->_device, passType, materialResources, file.descriptorPool));
+        std::shared_ptr<MaterialInstance> newMat = std::make_shared<MaterialInstance>(engine->_metalRoughMaterial.updateMaterialDescriptorSets(engine->getDevice(), passType, materialResources, file.descriptorPool));
         materials.push_back(newMat);
         file.materials[mat.name.c_str()] = newMat;
 
@@ -376,7 +418,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::s
             newmesh->surfaces.push_back(newSurface);
         }
 
-        newmesh->meshBuffers = engine->uploadMesh(indices, vertices);
+        newmesh->meshBuffers = uploadMesh(engine, indices, vertices);
     }
 //> load_nodes
     // load all nodes and their meshes
@@ -476,11 +518,11 @@ void LoadedGLTF::generateRenderObject(const glm::mat4& topMatrix, RenderScene& s
 
 void LoadedGLTF::clearAll()
 {
-    VkDevice dv = creator->_device;
+    VkDevice dv = creator->getDevice();
 
     for (auto& [k, v] : meshes) {
-        AllocatedBuffer::destroyBuffer(creator->_allocator,v->meshBuffers.indexBuffer);
-        AllocatedBuffer::destroyBuffer(creator->_allocator, v->meshBuffers.vertexBuffer);
+        AllocatedBuffer::destroyBuffer(creator->getAllocator(),v->meshBuffers.indexBuffer);
+        AllocatedBuffer::destroyBuffer(creator->getAllocator(), v->meshBuffers.vertexBuffer);
     }
 
     for (auto& [k, v] : images) {
@@ -489,7 +531,7 @@ void LoadedGLTF::clearAll()
             // dont destroy the default images
             continue;
         }
-        AllocatedImage::destroyImage(creator->_device, creator->_allocator, v);
+        AllocatedImage::destroyImage(creator->getDevice(), creator->getAllocator(), v);
     }
 
     for (auto& sampler : samplers) {
@@ -501,5 +543,5 @@ void LoadedGLTF::clearAll()
 
     descriptorPool.destroyPools(dv);
 
-    AllocatedBuffer::destroyBuffer(creator->_allocator, materialBuffer);
+    AllocatedBuffer::destroyBuffer(creator->getAllocator(), materialBuffer);
 }

@@ -863,48 +863,6 @@ void VulkanEngine::initRenderObjects()
     }
 }
 
-GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
-{
-    const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
-    const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
-
-    GPUMeshBuffers newSurface;
-    newSurface.vertexBuffer = AllocatedBuffer::createBuffer(_allocator, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-    
-    newSurface.indexBuffer = AllocatedBuffer::createBuffer(_allocator, indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
-
-    AllocatedBuffer staging = AllocatedBuffer::createBuffer(_allocator, vertexBufferSize + indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-
-	void* data = AllocatedBuffer::mapBuffer(_allocator, staging);
-    // copy vertex buffer
-    memcpy(data, vertices.data(), vertexBufferSize);
-    // copy index buffer
-    memcpy((char*)data + vertexBufferSize, indices.data(), indexBufferSize);
-    AllocatedBuffer::unmapBuffer(_allocator, staging);
-
-    immediateSubmit([&](VkCommandBuffer cmd) {
-        VkBufferCopy vertexCopy { 0 };
-        vertexCopy.dstOffset = 0;
-        vertexCopy.srcOffset = 0;
-        vertexCopy.size = vertexBufferSize;
-
-        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
-
-        VkBufferCopy indexCopy { 0 };
-        indexCopy.dstOffset = 0;
-        indexCopy.srcOffset = vertexBufferSize;
-        indexCopy.size = indexBufferSize;
-
-        vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
-    });
-
-    getCurrentFrame()._deletionQueue.push_function([=]() {
-        AllocatedBuffer::destroyBuffer(_allocator, staging);
-        });
-
-    return newSurface;
-}
-
 FrameData& VulkanEngine::getCurrentFrame()
 {
     return _frames[_frameNumber % FRAME_OVERLAP];
@@ -1368,12 +1326,12 @@ void VulkanEngine::initDescriptors()
 void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 {
 	VkShaderModule meshFragShader;
-	if (!vkUtils::loadShaderModule("../../shaders/tri_mesh_ssbo.frag.spv", engine->_device, &meshFragShader)) {
+	if (!vkUtils::loadShaderModule("../../shaders/tri_mesh_ssbo.frag.spv", engine->getDevice(), &meshFragShader)) {
 		fmt::println("Error when building the triangle fragment shader module");
 	}
 
 	VkShaderModule meshVertexShader;
-	if (!vkUtils::loadShaderModule("../../shaders/tri_mesh_ssbo.vert.spv", engine->_device, &meshVertexShader)) {
+	if (!vkUtils::loadShaderModule("../../shaders/tri_mesh_ssbo.vert.spv", engine->getDevice(), &meshVertexShader)) {
 		fmt::println("Error when building the triangle vertex shader module");
 	}
 
@@ -1385,10 +1343,9 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
     DescriptorLayoutBuilder layoutBuilder;
     layoutBuilder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
 
-    materialLayout = layoutBuilder.build(engine->_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    materialLayout = layoutBuilder.build(engine->getDevice(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
-	VkDescriptorSetLayout layouts[] = { engine->_globalDescriptorSetLayout, engine->_objectDataDescriptorSetLayout, 
-        materialLayout };
+	VkDescriptorSetLayout layouts[] = { engine->_globalDescriptorSetLayout, engine->_objectDataDescriptorSetLayout, materialLayout };
 
 	VkPipelineLayoutCreateInfo mesh_layout_info = vkInit::pipelineLayoutCreateInfo();
 	mesh_layout_info.setLayoutCount = 3;
@@ -1397,7 +1354,7 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	mesh_layout_info.pushConstantRangeCount = 1;
 
 	VkPipelineLayout newLayout;
-	VK_CHECK(vkCreatePipelineLayout(engine->_device, &mesh_layout_info, nullptr, &newLayout));
+	VK_CHECK(vkCreatePipelineLayout(engine->getDevice(), &mesh_layout_info, nullptr, &newLayout));
 
     opaquePipeline.layout = newLayout;
     transparentPipeline.layout = newLayout;
@@ -1430,23 +1387,23 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	pipelineBuilder._pipelineLayout = newLayout;
 
 	// finally build the pipeline
-    opaquePipeline.pipeline = pipelineBuilder.buildPipeline(engine->_device);
+    opaquePipeline.pipeline = pipelineBuilder.buildPipeline(engine->getDevice());
 
 	// create the forwardTransparent variant
 	pipelineBuilder.enableBlendingAdditive();
 
 	pipelineBuilder.enableDepthTest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
-	transparentPipeline.pipeline = pipelineBuilder.buildPipeline(engine->_device);
+	transparentPipeline.pipeline = pipelineBuilder.buildPipeline(engine->getDevice());
 	
-	vkDestroyShaderModule(engine->_device, meshFragShader, nullptr);
-	vkDestroyShaderModule(engine->_device, meshVertexShader, nullptr);
+	vkDestroyShaderModule(engine->getDevice(), meshFragShader, nullptr);
+	vkDestroyShaderModule(engine->getDevice(), meshVertexShader, nullptr);
 
     engine->_mainDeletionQueue.push_function([=]() {
-        vkDestroyPipeline(engine->_device, opaquePipeline.pipeline, nullptr);
-        vkDestroyPipeline(engine->_device, transparentPipeline.pipeline, nullptr);
-        vkDestroyPipelineLayout(engine->_device, newLayout, nullptr);
-        vkDestroyDescriptorSetLayout(engine->_device, materialLayout, nullptr);
+        vkDestroyPipeline(engine->getDevice(), opaquePipeline.pipeline, nullptr);
+        vkDestroyPipeline(engine->getDevice(), transparentPipeline.pipeline, nullptr);
+        vkDestroyPipelineLayout(engine->getDevice(), newLayout, nullptr);
+        vkDestroyDescriptorSetLayout(engine->getDevice(), materialLayout, nullptr);
 		});
 }
 
