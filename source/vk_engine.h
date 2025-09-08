@@ -118,7 +118,6 @@ struct EngineStats {
     int drawcallCount;
     float shadowPassTime = 0.0f;
     float forwardPassTime = 0.0f;
-    float transparentPassTime = 0.0f;
 };
 
 struct GLTFMetallic_Roughness {

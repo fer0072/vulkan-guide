@@ -20,15 +20,16 @@
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
 #ifdef _DEBUG
+constexpr bool bUseValidationLayers = true;
 //#define VMA_DEBUG_LOG_FORMAT(format, ...)  printf((format), __VA_ARGS__)
 //#define VMA_DEBUG_LOG(str)                 printf("%s\n", (str))
 //#define VMA_DEBUG_INITIALIZE_ALLOCATIONS 1
 //#define VMA_DEBUG_DETECT_CORRUPTION 1
 //#define VMA_DEBUG_MARGIN 16
 //#define VMA_DEBUG_GLOBAL_MUTEX 1
+#elif
+constexpr bool bUseValidationLayers = false;
 #endif
-
-constexpr bool bUseValidationLayers = true;
 
 // we want to immediately abort when there is an error. In normal engines this
 // would give an error message to the user, or perform a dump of state.
@@ -644,7 +645,6 @@ void VulkanEngine::shadowPass(VkCommandBuffer cmd)
 
 void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass)
 {
-    //TBD
     if (meshPass.instanceBatches.size() > 0)
     {
         DrawMesh* lastMesh = nullptr;
@@ -686,7 +686,6 @@ void VulkanEngine::forwardPass(VkCommandBuffer cmd)
     auto start = std::chrono::system_clock::now();
 
     _engineStats.drawcallCount = 0;
-    _engineStats.triangleCount = 0;
 
     /*
     *  Record draw commands of the forward pass.
@@ -764,7 +763,7 @@ void VulkanEngine::forwardPass(VkCommandBuffer cmd)
 	*  Add draw commands to the command buffer.
     */
     generateDrawCommands(cmd, _renderScene.forwardOpaquePass);
-    //generateDrawCommands(cmd, _renderScene.forwardTransparentPass);
+    generateDrawCommands(cmd, _renderScene.forwardTransparentPass);
 
     auto end = std::chrono::system_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
@@ -823,8 +822,7 @@ void VulkanEngine::run()
             ImGui::Text("frameTime %.2f ms", _engineStats.frameTime);
             ImGui::Text("shadow pass drawtime %.2f ms", _engineStats.shadowPassTime);
             ImGui::Text("foward pass drawtime %.2f ms", _engineStats.forwardPassTime);
-            ImGui::Text("forwardTransparent pass drawtime %.2f ms", _engineStats.transparentPassTime);
-            ImGui::Text("triangles %i", _engineStats.triangleCount);
+            //ImGui::Text("triangles %i", _engineStats.triangleCount);
             ImGui::Text("draws %i", _engineStats.drawcallCount);
         }
         ImGui::End();
