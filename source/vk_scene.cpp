@@ -202,10 +202,10 @@ RenderObject* RenderScene::getRenderObject(Handle<RenderObject> objectID)
 
 Handle<DrawMesh> RenderScene::generateDrawMesh(GeoSurface* surface, std::shared_ptr<MeshAsset> meshAsset)
 {
-	auto it = cachedMeshAssets.find(meshAsset.get());
+	auto it = cachedMeshAssets.find(meshAsset);
 	if (it == cachedMeshAssets.end())
 	{
-		cachedMeshAssets[meshAsset.get()] = std::make_pair(0, 0);
+		cachedMeshAssets[meshAsset] = std::make_pair(0, 0);
 	}
 
 	DrawMesh newMesh;
@@ -228,7 +228,7 @@ void RenderScene::mergeMeshes(VulkanEngine* engine)
 
 	for(auto& cache: cachedMeshAssets)
 	{
-		MeshAsset* meshAsset = cache.first;
+		std::shared_ptr<MeshAsset> meshAsset = cache.first;
 		std::pair<uint32_t, uint32_t>& startIndices = cache.second;
 
 		startIndices.first = totalVertices;
@@ -240,7 +240,7 @@ void RenderScene::mergeMeshes(VulkanEngine* engine)
 
 	for (auto& drawMesh : drawMeshes)
 	{
-		MeshAsset* meshAsset = drawMesh.getMeshAsset();
+		std::shared_ptr<MeshAsset> meshAsset = drawMesh.meshAsset;
 		std::pair<uint32_t, uint32_t> startIndices = cachedMeshAssets[meshAsset];
 		drawMesh.firstVertex = startIndices.first;
 		drawMesh.firstIndex += startIndices.second;
@@ -254,7 +254,7 @@ void RenderScene::mergeMeshes(VulkanEngine* engine)
 	engine->immediateSubmit([&](VkCommandBuffer cmd) {
 		for (auto& cache : cachedMeshAssets)
 		{
-			MeshAsset* meshAsset = cache.first;
+			std::shared_ptr<MeshAsset> meshAsset = cache.first;
 			std::pair<uint32_t, uint32_t> startIndices = cache.second;
 
 			VkBufferCopy vertexCopy;
@@ -321,7 +321,7 @@ void RenderScene::buildPassBatches(MeshPass* pass)
 			{
 				PassObject passObject = pass->objects[object];
 				RenderObject* renderObject = getRenderObject(passObject.objectID);
-				MaterialInstance* material = renderObject->getMaterial();
+				std::shared_ptr <MaterialInstance> material = renderObject->material;
 
 				uint64_t pipelineHash = std::hash<uint64_t>()(uint64_t(material->pipeline->pipeline));
 				uint64_t setHash = std::hash<uint64_t>()((uint64_t)material->materialSet);
@@ -399,8 +399,8 @@ void RenderScene::buildPassBatches(MeshPass* pass)
 				RenderObject* renderObject = getRenderObject(passObject->objectID);
 				RenderScene::InstanceBatch& lastInstanceBatch = pass->instanceBatches.back();
 
-				bool isSameMaterial = *renderObject->getMaterial() == *lastInstanceBatch.getMaterial();
-				bool isSameMesh = getMesh(renderObject->meshID)->meshAsset.lock() == getMesh(lastInstanceBatch.meshID)->meshAsset.lock();
+				bool isSameMaterial = *renderObject->material.get() == *lastInstanceBatch.getMaterial();
+				bool isSameMesh = getMesh(renderObject->meshID)->meshAsset == getMesh(lastInstanceBatch.meshID)->meshAsset;
 
 				if (isSameMaterial && isSameMesh)
 				{

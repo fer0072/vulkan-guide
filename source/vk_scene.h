@@ -41,26 +41,16 @@ struct DrawMesh
     uint32_t firstVertex;
     bool isMerged = false;
 
-    std::weak_ptr<MeshAsset> meshAsset;
-
-    MeshAsset* getMeshAsset()
-    {
-        return meshAsset.lock().get();
-	}
+    std::shared_ptr<MeshAsset> meshAsset;
 };
 
 struct RenderObject 
 {
     Handle<DrawMesh> meshID;
-    std::weak_ptr<MaterialInstance> material;
+    std::shared_ptr<MaterialInstance> material;
 
     Bounds bounds;
     glm::mat4 transform;
-
-    MaterialInstance* getMaterial()
-    {
-        return material.lock().get();
-    }
 };
 
 class RenderScene
@@ -157,7 +147,7 @@ public:
 private:
 
     // MeshAssets and its start index in the merged buffers.
-	std::map<MeshAsset*, std::pair<uint32_t, uint32_t> /*index in the merged vertex buffer and index buffer*/> cachedMeshAssets; 
+	std::map<std::shared_ptr<MeshAsset>, std::pair<uint32_t, uint32_t> /*index in the merged vertex buffer and index buffer*/> cachedMeshAssets;
 
     std::vector<DrawMesh> drawMeshes;
 
