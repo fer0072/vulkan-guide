@@ -342,13 +342,15 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
     _renderScene.prepareMeshData(cmd, this);
     _renderScene.prepareComputeCullData(cmd, this);
 
-    computeCullPass(cmd);
-
 	/*
-	*  Draw the forward pass, including opaque objects and transparent objects.
+	*  Render passes.
     */   
 
+    computeCullPass(cmd);
+
     //shadowPass(cmd);
+    
+    //Draw the forward pass, including opaque objects and transparent objects.
     forwardPass(cmd);
 }
 
