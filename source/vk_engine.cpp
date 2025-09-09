@@ -37,6 +37,13 @@ using namespace std;
 
 VulkanEngine* loadedEngine = nullptr;
 
+namespace vkGlobals
+{
+    float g_zNear = 0.1f;
+    float g_zFar = 5000.0f;
+    float g_maxDrawDist = 5000.0f;
+}
+
 glm::vec4 normalizePlane(glm::vec4 p)
 {
     return p / glm::length(glm::vec3(p));
@@ -562,15 +569,15 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
     DrawCullData cullData = {};
     cullData.P00 = projMat[0][0];
     cullData.P11 = projMat[1][1];
-    cullData.zNear = 0.1f;
-    cullData.zFar = cullParams.drawDist;
+    cullData.zNear = cullParams.zNear;
+    cullData.zFar = cullParams.zFar;
+    cullData.drawDist = cullParams.drawDist;
     cullData.frustum[0] = frustumX.x;
     cullData.frustum[1] = frustumX.z;
     cullData.frustum[2] = frustumY.y;
     cullData.frustum[3] = frustumY.z;
     cullData.drawCount = static_cast<uint32_t>(meshPass.flatBatches.size());
-    cullData.cullingEnabled = cullParams.frustrumCull;
-    cullData.lodEnabled = false;
+    cullData.distanceCullEnabled = cullParams.distanceCull;
     cullData.occlusionEnabled = cullParams.occlusionCull;
     cullData.lodBase = 10.f;
     cullData.lodStep = 1.5f;
@@ -578,15 +585,6 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
     cullData.pyramidWidth = 1.0f;// static_cast<float>(depthPyramidWidth);
     cullData.pyramidHeight = 1.0f;// static_cast<float>(depthPyramidHeight);
     cullData.viewMat = cullParams.viewMat;//get_view_matrix();
-
-    if (cullParams.drawDist > 10000)
-    {
-        cullData.distanceCheck = false;
-    }
-    else
-    {
-        cullData.distanceCheck = true;
-    }
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.pipeline);
 
@@ -614,13 +612,15 @@ void VulkanEngine::computeCullPass(VkCommandBuffer cmd)
     CullParams forwardCullParams;
     forwardCullParams.viewMat = _mainCamera.getViewMatrix();
 	forwardCullParams.projMat = _mainCamera.getProjectionMatrix();
-    forwardCullParams.frustrumCull = true;
+    forwardCullParams.distanceCull = true;
     forwardCullParams.occlusionCull = true;
-    // TBD use cvar to control
-    forwardCullParams.drawDist = 5000.0f;
+    forwardCullParams.drawDist = vkGlobals::g_maxDrawDist;
+    forwardCullParams.zNear = vkGlobals::g_zNear;
+    forwardCullParams.zFar = vkGlobals::g_zFar;
 
+    // TBD shadow pass
 	generateComputeCullCommands(cmd, _renderScene.forwardOpaquePass, forwardCullParams);
-    //generateComputeCullCommands(cmd, _renderScene.forwardTransparentPass, forwardCullParams);
+    generateComputeCullCommands(cmd, _renderScene.forwardTransparentPass, forwardCullParams);
 
     if (postCullBarriers.size() > 0)
     {

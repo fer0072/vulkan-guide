@@ -6,25 +6,15 @@ layout (local_size_x = 256) in;
 struct DrawCullData
 {
 	mat4 view;
-	float P00, P11, znear, zfar; // symmetric projection parameters
+	float P00, P11, znear, zfar, drawDist; // symmetric projection parameters
 	float frustum[4]; // data for left/right/top/bottom frustum planes
 	float lodBase, lodStep; // lod distance i = base * pow(step, i)
 	float pyramidWidth, pyramidHeight; // depth pyramid size in texels
 
 	uint drawCount;
 
-	int cullingEnabled;
-	int lodEnabled;
 	int occlusionEnabled;
-	int distCull;
-	int AABBcheck;
-	float aabbmin_x;
-	float aabbmin_y;
-	float aabbmin_z;
-	float aabbmax_x;
-	float aabbmax_y;
-	float aabbmax_z;
-
+	int distanceCullEnabled;
 };
 
 layout(push_constant) uniform  constants{   
@@ -128,16 +118,15 @@ bool IsVisible(uint objectIndex)
 	visible = visible && center.z * cullData.frustum[3] - abs(center.y) * cullData.frustum[2] > -radius;
 
 	// Test near / far frustun plane.
-	if(cullData.distCull != 0)
-	{
-		float cameraSphereNearDist = -center.z - radius;
-		float cameraSphereFarDist  = -center.z + radius;
-		if (cameraSphereFarDist < cullData.znear) visible = false;
-		if (cameraSphereNearDist > cullData.zfar) visible = false;
-	}
-	
+	float cameraSphereNearDist = -center.z - radius;
+	float cameraSphereFarDist  = -center.z + radius;
+	if (cameraSphereFarDist < cullData.znear) visible = false;
+	if (cameraSphereNearDist > cullData.zfar) visible = false;
 
-	visible = visible || cullData.cullingEnabled == 0;
+	if(cullData.distanceCullEnabled != 0)
+	{
+		visible = cameraSphereNearDist < cullData.drawDist; 
+	}
 
 	//flip Y because we access depth texture that way
 	center.y *= -1;
@@ -162,41 +151,14 @@ bool IsVisible(uint objectIndex)
 
 	return visible;
 }
-bool IsVisibleAABB(uint objectIndex)
-{
-	uint index = objectIndex;
 
-	vec4 sphereBounds = objectDataBuffer.objects[index].spherebounds;
-
-	vec3 center = sphereBounds.xyz;
-	//center = (cullData.view * vec4(center,1.f)).xyz;
-	float radius = sphereBounds.w;
-	
-	bool visible = true;
-
-	vec3 aabbmin = vec3(cullData.aabbmin_x,cullData.aabbmin_y,cullData.aabbmin_z) + vec3(radius);
-	vec3 aabbmax = vec3(cullData.aabbmax_x,cullData.aabbmax_y,cullData.aabbmax_z) - vec3(radius);
-
-	visible =visible&& (center.x > aabbmin.x) && (center.x < aabbmax.x);
-	visible =visible&& (center.y > aabbmin.y) && (center.y < aabbmax.y);
-	visible =visible&& (center.z > aabbmin.z) && (center.z < aabbmax.z);
-
-	return visible;
-}
 void main() 
 {		
 	uint gID = gl_GlobalInvocationID.x;
 	if(gID < cullData.drawCount)
 	{
 		uint objectID = instanceIDBuffer.Instances[gID].objectID;
-		bool visible = false;
-		if(cullData.AABBcheck == 0)
-		{
-			visible = IsVisible(objectID);
-		}
-		else{
-			visible = IsVisibleAABB(objectID);
-		}
+		bool visible = IsVisible(objectID);
 		
 		if(visible)
 		{

@@ -1,6 +1,7 @@
 #include "camera.h"
 #include "glm/gtx/quaternion.hpp"
 #include "glm/gtx/transform.hpp"
+#include "vk_types.h"
 
 glm::mat4 Camera::getViewMatrix() const
 {
@@ -20,12 +21,12 @@ glm::mat4 Camera::getProjectionMatrix(bool bReverse /*= true*/) const
 {
 	if (bReverse)
 	{
-		glm::mat4 pro = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 5000.0f, 0.1f);
+		glm::mat4 pro = glm::perspective(glm::radians(70.f), 1700.f / 900.f, vkGlobals::g_zFar, vkGlobals::g_zNear);
 		pro[1][1] *= -1;
 		return pro;
 	}
 	else {
-		glm::mat4 pro = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 5000.0f);
+		glm::mat4 pro = glm::perspective(glm::radians(70.f), 1700.f / 900.f, vkGlobals::g_zNear, vkGlobals::g_zFar);
 		pro[1][1] *= -1;
 		return pro;
 	}

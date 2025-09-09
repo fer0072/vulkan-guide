@@ -1,6 +1,5 @@
 ﻿// vulkan_guide.h : Include file for standard system include files,
 // or project specific include files.
-//> intro
 #pragma once
 
 #include <memory>
@@ -20,7 +19,13 @@
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
-//< intro 
+
+namespace vkGlobals
+{
+    extern float g_zNear;
+    extern float g_zFar;
+    extern float g_maxDrawDist;
+}
 
 class VulkanEngine;
 

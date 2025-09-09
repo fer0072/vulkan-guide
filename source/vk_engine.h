@@ -66,25 +66,25 @@ struct ComputeEffect {
 struct CullParams {
     glm::mat4 viewMat;
     glm::mat4 projMat;
+    bool distanceCull;
     bool occlusionCull;
-    bool frustrumCull;
+    float zNear;
+    float zFar;
     float drawDist;
 };
 
 struct DrawCullData
 {
     glm::mat4 viewMat;
-    float P00, P11, zNear, zFar; // symmetric projection parameters
+    float P00, P11, zNear, zFar, drawDist; // symmetric projection parameters
     float frustum[4]; // data for left/right/top/bottom frustum planes
     float lodBase, lodStep; // lod distance i = base * pow(step, i)
     float pyramidWidth, pyramidHeight; // depth pyramid size in texels
 
     uint32_t drawCount;
 
-    int cullingEnabled;
-    int lodEnabled;
-    int occlusionEnabled;
-    int distanceCheck;
+    int32_t occlusionEnabled;
+    int32_t distanceCullEnabled;
 };
 //< Compute cull related data.
 
