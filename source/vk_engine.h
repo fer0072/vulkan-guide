@@ -103,10 +103,10 @@ struct FrameData {
 
 struct EngineStats {
     float frameTime;
-    int triangleCount;
-    int drawcallCount;
+    float computeCullPassTime = 0.0f;
     float shadowPassTime = 0.0f;
     float forwardPassTime = 0.0f;
+    float HZBPassTime = 0.0f;
 };
 
 struct GLTFMetallic_Roughness {

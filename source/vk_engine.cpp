@@ -607,6 +607,8 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 
 void VulkanEngine::computeCullPass(VkCommandBuffer cmd)
 {
+    auto start = std::chrono::system_clock::now();
+
     postCullBarriers.clear();
 
     CullParams forwardCullParams;
@@ -627,6 +629,11 @@ void VulkanEngine::computeCullPass(VkCommandBuffer cmd)
         vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, 0,
             0, nullptr, static_cast<uint32_t>(postCullBarriers.size()), postCullBarriers.data(), 0, nullptr);
 	}
+
+    auto end = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    _engineStats.computeCullPassTime = elapsed.count() / 1000.f;
 }
 
 void VulkanEngine::shadowPass(VkCommandBuffer cmd)
@@ -663,20 +670,13 @@ void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPa
             vkCmdBindIndexBuffer(cmd, _renderScene.mergedIndexBuffer.value().buffer, 0, VK_INDEX_TYPE_UINT32);
 
             vkCmdDrawIndexedIndirect(cmd, meshPass.drawIndirectBuffer.value().buffer, indirectBatch.firstInstanceBatch * sizeof(VkDrawIndexedIndirectCommand), indirectBatch.count, sizeof(VkDrawIndexedIndirectCommand));
-
-            _engineStats.drawcallCount++;
         }
     }
 }
 
 void VulkanEngine::forwardPass(VkCommandBuffer cmd)
 {
-    /*
-    *  Init stats data of the forward pass.
-    */
     auto start = std::chrono::system_clock::now();
-
-    _engineStats.drawcallCount = 0;
 
     /*
     *  Record draw commands of the forward pass.
@@ -811,10 +811,10 @@ void VulkanEngine::run()
         if (ImGui::Begin("Stats"))
         {
             ImGui::Text("frameTime %.2f ms", _engineStats.frameTime);
-            ImGui::Text("shadow pass drawtime %.2f ms", _engineStats.shadowPassTime);
-            ImGui::Text("foward pass drawtime %.2f ms", _engineStats.forwardPassTime);
-            //ImGui::Text("triangles %i", _engineStats.triangleCount);
-            ImGui::Text("draws %i", _engineStats.drawcallCount);
+            ImGui::Text("compute cull pass time %.2f ms", _engineStats.computeCullPassTime);
+            ImGui::Text("shadow pass time %.2f ms", _engineStats.shadowPassTime);
+            ImGui::Text("foward pass time %.2f ms", _engineStats.forwardPassTime);
+            ImGui::Text("HZB pass time %.2f ms", _engineStats.HZBPassTime);
         }
         ImGui::End();
 
