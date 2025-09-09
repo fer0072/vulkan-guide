@@ -608,10 +608,9 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 
     writer.addBufferDescriptorSet(3, meshPass.culledInstanceObjectIDBuffer.value().buffer, meshPass.culledInstanceObjectIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-    //TBD
-    //writer.addImageDescriptorSet(4, _depthPyramid.imageView, _depthSampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer.addImageDescriptorSet(4, _depthPyramid.imageView, _depthSampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-    writer.addBufferDescriptorSet(4, getCurrentFrame()._sceneDataBuffer.buffer, getCurrentFrame()._sceneDataBuffer.size, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.addBufferDescriptorSet(5, getCurrentFrame()._sceneDataBuffer.buffer, getCurrentFrame()._sceneDataBuffer.size, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
     writer.updateDescriptorSets(_device, _computeCullDataDescriptorSet);
 
@@ -1462,8 +1461,8 @@ void VulkanEngine::initDescriptors()
         builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
         builder.addBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
         builder.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
-        //builder.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1);
-        builder.addBinding(4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
+        builder.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1);
+        builder.addBinding(5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
         _computeCullDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
     }
     {

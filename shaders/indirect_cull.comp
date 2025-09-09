@@ -64,10 +64,9 @@ layout(set = 0, binding = 3)  buffer FinalInstanceObjectIDBuffer{
 	uint IDs[];
 } finalInstanceObjectIDBuffer;
 
-//TBD
-//layout(set = 0,binding = 4) uniform sampler2D depthPyramid;
-//layout(set = 0, binding = 5) uniform  CameraBuffer{   
-layout(set = 0, binding = 4) uniform  SceneData{   
+layout(set = 0,binding = 4) uniform sampler2D depthPyramid;
+
+layout(set = 0, binding = 5) uniform  SceneData{   
     mat4 view;
 	mat4 proj;
 	mat4 viewproj;
@@ -128,26 +127,27 @@ bool IsVisible(uint objectIndex)
 		visible = visible && cameraSphereNearDist < cullData.drawDist; 
 	}
 
-	//flip Y because we access depth texture that way
+	// Flip Y because we access depth texture that way
 	center.y *= -1;
 
-	// if(visible && cullData.occlusionEnabled != 0)
-	// {
-	// 	vec4 aabb;
-	// 	if (projectSphere(center, radius, cullData.znear, cullData.P00, cullData.P11, aabb))
-	// 	{
-	// 		float width = (aabb.z - aabb.x) * cullData.pyramidWidth;
-	// 		float height = (aabb.w - aabb.y) * cullData.pyramidHeight;
+	// Use HZB depth pyramid to do occlusion cull.
+	if(visible && cullData.occlusionEnabled != 0)
+	{
+		vec4 aabb;
+		if (projectSphere(center, radius, cullData.znear, cullData.P00, cullData.P11, aabb))
+		{
+			float width = (aabb.z - aabb.x) * cullData.pyramidWidth;
+			float height = (aabb.w - aabb.y) * cullData.pyramidHeight;
 
-	// 		float level = floor(log2(max(width, height)));
+			float level = floor(log2(max(width, height)));
 
-	// 		// Sampler is set up to do min reduction, so this computes the minimum depth of a 2x2 texel quad
-    //         float depth = textureLod(depthPyramid, (aabb.xy + aabb.zw) * 0.5, level).x;
-	// 		float depthSphere =cullData.znear / (center.z - radius);
+			// Sampler is set up to do min reduction, so this computes the minimum depth of a 2x2 texel quad
+            float depth = textureLod(depthPyramid, (aabb.xy + aabb.zw) * 0.5, level).x;
+			float depthSphere = cullData.znear / (center.z - radius);
 
-	// 		visible = visible && depthSphere >= depth;
-	// 	}
-	// }
+			visible = visible && depthSphere >= depth;
+		}
+	}
 
 	return visible;
 }
