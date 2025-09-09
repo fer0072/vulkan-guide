@@ -339,8 +339,7 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
     /*
     *  Prepare data for each passes.
     */
-    _renderScene.prepareMeshData(cmd, this);
-    _renderScene.prepareComputeCullData(cmd, this);
+    _renderScene.preparePassData(cmd, this);
 
 	/*
 	*  Render passes.

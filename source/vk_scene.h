@@ -97,8 +97,6 @@ public:
         std::vector<Handle<RenderObject>> unbatchedObjects;
 		std::vector<PassObject> objects;
         MaterialPass passType;
-        bool needsInitialDrawIndirectBufferRefresh = false;
-        bool needsInstanceIDBufferRefresh = false;
 
         PassObject* get(Handle<PassObject> handle);
 
@@ -140,7 +138,7 @@ public:
 
     void prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine);
 
-    void prepareMeshData(VkCommandBuffer cmd, VulkanEngine* engine);
+    void preparePassData(VkCommandBuffer cmd, VulkanEngine* engine);
 
     void mergeMeshes(VulkanEngine* engine);
 
@@ -156,15 +154,19 @@ private:
     std::vector<DrawMesh> drawMeshes;
 
     std::vector<VkBufferMemoryBarrier> cullReadyBarriers;
+    std::vector<VkBufferMemoryBarrier> uploadBarriers;
 
 private:
 
     void buildPassBatches(MeshPass* pass);
 
-    void prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass& meshPass);
-
     RenderObject* getRenderObject(Handle<RenderObject> objectID);
 
     DrawMesh* getMesh(Handle<DrawMesh> meshID);
 
+	void uploadObjectData(VkCommandBuffer cmd, VulkanEngine* engine);
+
+    void createPassBuffers(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass* meshPass);
+
+    void uploadPassData(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass* meshPass);
 };
