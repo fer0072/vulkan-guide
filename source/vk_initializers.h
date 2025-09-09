@@ -20,6 +20,8 @@ namespace vkInit {
 
 	VkSemaphoreCreateInfo semaphoreCreateInfo(VkSemaphoreCreateFlags flags = 0);
 
+	VkImageMemoryBarrier imageMemoryBarrier(VkImage image, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, VkImageLayout oldLayout, VkImageLayout newLayout, VkImageAspectFlags aspectMask);
+
 	VkBufferMemoryBarrier bufferMemoryBarrier(VkBuffer buffer, uint32_t queueFamilyIndex, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask);
 
 	VkSubmitInfo2 submitInfo(VkCommandBufferSubmitInfo* cmd, VkSemaphoreSubmitInfo* signalSemaphoreInfo, VkSemaphoreSubmitInfo* waitSemaphoreInfo);
