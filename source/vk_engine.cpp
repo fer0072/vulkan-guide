@@ -648,7 +648,11 @@ void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPa
         DrawMesh* lastMesh = nullptr;
         VkPipeline lastPipeline = VK_NULL_HANDLE;
         VkPipelineLayout lastLayout = VK_NULL_HANDLE;
-        VkDescriptorSet lastMaterialSet = VK_NULL_HANDLE;
+        VkDescriptorSet lastDescriptorSet = VK_NULL_HANDLE;
+
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmd, 0, 1, &_renderScene.mergedVertexBuffer.value().buffer, &offset);
+        vkCmdBindIndexBuffer(cmd, _renderScene.mergedIndexBuffer.value().buffer, 0, VK_INDEX_TYPE_UINT32);
 
         for (int i = 0; i < meshPass.indirectBatches.size(); i++)
         {
@@ -659,16 +663,25 @@ void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPa
             VkPipelineLayout newLayout = instanceBatch.getMaterial()->pipeline->layout;
             VkDescriptorSet newDescriptorSet = instanceBatch.getMaterial()->materialSet;
 
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newPipeline);
+            if (lastPipeline != newPipeline)
+            {
+                lastPipeline = newPipeline;
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newPipeline);
+            }
+            
+            if (lastLayout != newLayout)
+            {
+                lastLayout = newLayout;
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 0, 1, &_globalDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 1, 1, &_objectDataDescriptorSet, 0, nullptr);
+            }
 
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 0, 1, &_globalDescriptorSet, 0, nullptr);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 1, 1, &_objectDataDescriptorSet, 0, nullptr);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 2, 1, &newDescriptorSet, 0, nullptr);
-
-            VkDeviceSize offset = 0;
-            vkCmdBindVertexBuffers(cmd, 0, 1, &_renderScene.mergedVertexBuffer.value().buffer, &offset);
-            vkCmdBindIndexBuffer(cmd, _renderScene.mergedIndexBuffer.value().buffer, 0, VK_INDEX_TYPE_UINT32);
-
+            if (lastDescriptorSet != newDescriptorSet)
+            {
+                lastDescriptorSet = newDescriptorSet;
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 2, 1, &newDescriptorSet, 0, nullptr);
+            }
+            
             vkCmdDrawIndexedIndirect(cmd, meshPass.drawIndirectBuffer.value().buffer, indirectBatch.firstInstanceBatch * sizeof(VkDrawIndexedIndirectCommand), indirectBatch.count, sizeof(VkDrawIndexedIndirectCommand));
         }
     }
