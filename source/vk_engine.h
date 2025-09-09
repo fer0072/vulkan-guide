@@ -69,9 +69,6 @@ struct CullParams {
     bool occlusionCull;
     bool frustrumCull;
     float drawDist;
-    bool aabb;
-    glm::vec3 aabbMin;
-    glm::vec3 aabbMax;
 };
 
 struct DrawCullData
@@ -88,14 +85,6 @@ struct DrawCullData
     int lodEnabled;
     int occlusionEnabled;
     int distanceCheck;
-    int AABBcheck;
-    float aabbMin_x;
-    float aabbMin_y;
-    float aabbMin_z;
-    float aabbMax_x;
-    float aabbMax_y;
-    float aabbMax_z;
-
 };
 //< Compute cull related data.
 

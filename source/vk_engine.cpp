@@ -579,15 +579,6 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
     cullData.pyramidHeight = 1.0f;// static_cast<float>(depthPyramidHeight);
     cullData.viewMat = cullParams.viewMat;//get_view_matrix();
 
-    cullData.AABBcheck = cullParams.aabb;
-    cullData.aabbMin_x = cullParams.aabbMin.x;
-    cullData.aabbMin_y = cullParams.aabbMin.y;
-    cullData.aabbMin_z = cullParams.aabbMin.z;
-
-    cullData.aabbMax_x = cullParams.aabbMax.x;
-    cullData.aabbMax_y = cullParams.aabbMax.y;
-    cullData.aabbMax_z = cullParams.aabbMax.z;
-
     if (cullParams.drawDist > 10000)
     {
         cullData.distanceCheck = false;
@@ -627,7 +618,6 @@ void VulkanEngine::computeCullPass(VkCommandBuffer cmd)
     forwardCullParams.occlusionCull = true;
     // TBD use cvar to control
     forwardCullParams.drawDist = 5000.0f;
-	forwardCullParams.aabb = false;
 
 	generateComputeCullCommands(cmd, _renderScene.forwardOpaquePass, forwardCullParams);
     //generateComputeCullCommands(cmd, _renderScene.forwardTransparentPass, forwardCullParams);
