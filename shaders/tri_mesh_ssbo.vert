@@ -12,8 +12,7 @@ layout (location = 1) out vec3 outColor;
 layout (location = 2) out vec2 outUV;
 //layout(location = 3) out vec4 ShadowCoord;
 
-layout(set = 0, binding = 0) uniform  SceneData{   
-
+layout(set = 0, binding = 0) uniform SceneData{   
 	mat4 view;
 	mat4 proj;
 	mat4 viewproj;
@@ -27,25 +26,19 @@ layout(set = 0, binding = 1) uniform sampler2D allTextures[];
 struct ObjectData{
 	mat4 model;
 	vec4 spherebounds;
-	vec4 extents;
 }; 
 
 //all object matrices
-layout(std140,set = 1, binding = 0) readonly buffer ObjectBuffer{   
+layout(std140,set = 1, binding = 0) readonly buffer ObjectDataBuffer{   
 
 	ObjectData objects[];
-} objectBuffer;
-
-struct GPUInstance {
-	uint objectID;
-	uint batchID;
-};
+} objectDataBuffer;
 
 //all object indices
-layout(set = 1, binding = 1) readonly buffer InstanceBuffer{   
+layout(set = 1, binding = 1) readonly buffer InstanceObjectIDBuffer{   
 
 	uint IDs[];
-} instanceBuffer;
+} instanceObjectIDBuffer;
 
 layout(set = 2, binding = 0) uniform GLTFMaterialData{   
 
@@ -57,9 +50,9 @@ layout(set = 2, binding = 0) uniform GLTFMaterialData{
 
 void main() 
 {	
-	uint index = instanceBuffer.IDs[gl_InstanceIndex];
+	uint objectID = instanceObjectIDBuffer.IDs[gl_InstanceIndex];
 	
-	mat4 modelMatrix = objectBuffer.objects[index].model;
+	mat4 modelMatrix = objectDataBuffer.objects[objectID].model;
 	gl_Position =  sceneData.viewproj * modelMatrix * vec4(vPosition_uvx.xyz, 1.0f);
 
 	outNormal = (modelMatrix * vec4(vNormal_uvy.xyz, 0.f)).xyz;

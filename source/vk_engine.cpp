@@ -543,9 +543,9 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 
     writer.addBufferDescriptorSet(1, meshPass.drawIndirectBuffer.value().buffer, meshPass.drawIndirectBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-    writer.addBufferDescriptorSet(2, meshPass.GPUInstanceBuffer.value().buffer, meshPass.GPUInstanceBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.addBufferDescriptorSet(2, meshPass.instanceIDBuffer.value().buffer, meshPass.instanceIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-    writer.addBufferDescriptorSet(3, meshPass.compactedInstanceBuffer.value().buffer, meshPass.compactedInstanceBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.addBufferDescriptorSet(3, meshPass.culledInstanceObjectIDBuffer.value().buffer, meshPass.culledInstanceObjectIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
     //TBD
     //writer.addImageDescriptorSet(4, _depthPyramid.imageView, _depthSampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
@@ -608,7 +608,7 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 
     // Add memory barriers.
     {
-        VkBufferMemoryBarrier barrier = vkInit::bufferMemoryBarrier(meshPass.compactedInstanceBuffer.value().buffer, _graphicsQueueFamily, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+        VkBufferMemoryBarrier barrier = vkInit::bufferMemoryBarrier(meshPass.culledInstanceObjectIDBuffer.value().buffer, _graphicsQueueFamily, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
 
         VkBufferMemoryBarrier barrier2 = vkInit::bufferMemoryBarrier(meshPass.drawIndirectBuffer.value().buffer, _graphicsQueueFamily, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
 
@@ -673,7 +673,7 @@ void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPa
             vkCmdBindVertexBuffers(cmd, 0, 1, &_renderScene.mergedVertexBuffer.value().buffer, &offset);
             vkCmdBindIndexBuffer(cmd, _renderScene.mergedIndexBuffer.value().buffer, 0, VK_INDEX_TYPE_UINT32);
 
-            vkCmdDrawIndexedIndirect(cmd, meshPass.drawIndirectBuffer.value().buffer, indirectBatch.firstInstanceBatch * sizeof(GPUIndirectObject), indirectBatch.count, sizeof(GPUIndirectObject));
+            vkCmdDrawIndexedIndirect(cmd, meshPass.drawIndirectBuffer.value().buffer, indirectBatch.firstInstanceBatch * sizeof(VkDrawIndexedIndirectCommand), indirectBatch.count, sizeof(VkDrawIndexedIndirectCommand));
 
             _engineStats.drawcallCount++;
         }
@@ -757,7 +757,7 @@ void VulkanEngine::forwardPass(VkCommandBuffer cmd)
 
     writer.addBufferDescriptorSet(0, _renderScene.objectDataBuffer.value().buffer, _renderScene.objectDataBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-    writer.addBufferDescriptorSet(1, _renderScene.forwardOpaquePass.compactedInstanceBuffer.value().buffer, _renderScene.forwardOpaquePass.compactedInstanceBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.addBufferDescriptorSet(1, _renderScene.forwardOpaquePass.culledInstanceObjectIDBuffer.value().buffer, _renderScene.forwardOpaquePass.culledInstanceObjectIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
     writer.updateDescriptorSets(_device, _objectDataDescriptorSet);
 

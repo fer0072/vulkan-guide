@@ -35,55 +35,56 @@ layout(push_constant) uniform  constants{
 struct ObjectData{
 	mat4 model;
 	vec4 spherebounds;
-	vec4 extents;
 }; 
-//all object matrices
-layout(std140,set = 0, binding = 0) readonly buffer ObjectBuffer{   
+
+// Object data buffer.
+layout(std140,set = 0, binding = 0) readonly buffer ObjectDataBuffer{   
 
 	ObjectData objects[];
-} objectBuffer;
+} objectDataBuffer;
 
 struct DrawCommand
 {
-	
 	uint    indexCount;
     uint    instanceCount;
     uint    firstIndex;
     int     vertexOffset;
     uint    firstInstance;
-	uint objectID;
-	uint batchID;
 };
-//draw indirect buffer
-layout(set = 0, binding = 1)  buffer InstanceBuffer{   
+
+// Draw indirect buffer
+layout(set = 0, binding = 1)  buffer DrawIndirectBuffer{   
 
 	DrawCommand Draws[];
-} drawBuffer;
+} drawIndirectBuffer;
 
-struct GPUInstance {
+struct InstanceIDs {
 	uint objectID;
 	uint batchID;
 };
-//draw indirect buffer
-layout(set = 0, binding = 2) readonly buffer InstanceBuffer2{   
 
-	GPUInstance Instances[];
-} compactInstanceBuffer;
+layout(set = 0, binding = 2) readonly buffer InstanceIDBuffer{   
 
-//draw indirect buffer
-layout(set = 0, binding = 3)  buffer InstanceBuffer3{   
+	InstanceIDs Instances[];
+} instanceIDBuffer;
+
+
+layout(set = 0, binding = 3)  buffer FinalInstanceObjectIDBuffer{   
 
 	uint IDs[];
-} finalInstanceBuffer;
+} finalInstanceObjectIDBuffer;
 
 //TBD
 //layout(set = 0,binding = 4) uniform sampler2D depthPyramid;
 //layout(set = 0, binding = 5) uniform  CameraBuffer{   
-layout(set = 0, binding = 4) uniform  CameraBuffer{   
+layout(set = 0, binding = 4) uniform  SceneData{   
     mat4 view;
-    mat4 proj;
+	mat4 proj;
 	mat4 viewproj;
-} cameraData;
+	vec4 ambientColor;
+	vec4 sunlightDirection; //w for sun power
+	vec4 sunlightColor;
+} sceneData;
 
 
 // 2D Polyhedral Bounds of a Clipped, Perspective-Projected 3D Sphere. Michael Mara, Morgan McGuire. 2013
@@ -113,8 +114,8 @@ bool IsVisible(uint objectIndex)
 {
 	uint index = objectIndex;
 
-	vec4 sphereBounds = objectBuffer.objects[index].spherebounds;
-	mat4 modelMat = objectBuffer.objects[index].model;
+	vec4 sphereBounds = objectDataBuffer.objects[index].spherebounds;
+	mat4 modelMat = objectDataBuffer.objects[index].model;
 
 	vec3 center = (cullData.view * modelMat * vec4(sphereBounds.xyz,1.f)).xyz;
 	float radius = sphereBounds.w;
@@ -165,7 +166,7 @@ bool IsVisibleAABB(uint objectIndex)
 {
 	uint index = objectIndex;
 
-	vec4 sphereBounds = objectBuffer.objects[index].spherebounds;
+	vec4 sphereBounds = objectDataBuffer.objects[index].spherebounds;
 
 	vec3 center = sphereBounds.xyz;
 	//center = (cullData.view * vec4(center,1.f)).xyz;
@@ -187,7 +188,7 @@ void main()
 	uint gID = gl_GlobalInvocationID.x;
 	if(gID < cullData.drawCount)
 	{
-		uint objectID = compactInstanceBuffer.Instances[gID].objectID;
+		uint objectID = instanceIDBuffer.Instances[gID].objectID;
 		bool visible = false;
 		if(cullData.AABBcheck == 0)
 		{
@@ -199,12 +200,12 @@ void main()
 		
 		if(visible)
 		{
-			uint batchIndex = compactInstanceBuffer.Instances[gID].batchID;
-			uint countIndex = atomicAdd(drawBuffer.Draws[batchIndex].instanceCount,1);
+			uint batchIndex = instanceIDBuffer.Instances[gID].batchID;
+			uint countIndex = atomicAdd(drawIndirectBuffer.Draws[batchIndex].instanceCount,1);
 
-			uint instanceIndex = drawBuffer.Draws[batchIndex].firstInstance + countIndex;
+			uint instanceIndex = drawIndirectBuffer.Draws[batchIndex].firstInstance + countIndex;
 
-			finalInstanceBuffer.IDs[instanceIndex] = objectID;
+			finalInstanceObjectIDBuffer.IDs[instanceIndex] = objectID;
 		}
 	}
 }

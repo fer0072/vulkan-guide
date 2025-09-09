@@ -20,16 +20,9 @@ struct GPUObjectData
 {
     glm::mat4 transform;
     glm::vec4 boundOriginAndRadius;
-    glm::vec4 boundExtent;
 };
 
-struct GPUIndirectObject {
-    VkDrawIndexedIndirectCommand command;
-    uint32_t objectID;
-    uint32_t batchID;
-};
-
-struct GPUInstance {
+struct InstanceID {
     uint32_t objectID;
     uint32_t batchID;
 };
@@ -102,35 +95,46 @@ public:
     struct MeshPass 
     {
         std::vector<Handle<RenderObject>> unbatchedObjects;
-        std::vector<PassObject> objects;
+		std::vector<PassObject> objects;
+        MaterialPass passType;
+        bool needsInitialDrawIndirectBufferRefresh = false;
+        bool needsInstanceIDBufferRefresh = false;
 
+        PassObject* get(Handle<PassObject> handle);
+
+        /*
+		*  Batches of this pass.
+        */
         std::vector<RenderScene::FlatBatch> flatBatches;
         std::vector<RenderScene::InstanceBatch> instanceBatches;
         std::vector<RenderScene::IndirectBatch> indirectBatches;
 
-        std::optional<AllocatedBuffer> compactedInstanceBuffer;
-        std::optional<AllocatedBuffer> GPUInstanceBuffer;
+        /*
+		*  Buffers that used as input / output of the actual rendering passes.
+        */
+		// Input of compute cull pass. Object ID and instance batch ID of each instance.
+        std::optional<AllocatedBuffer> instanceIDBuffer;
+        // Output of compute cull pass and input of forward pass. Output of compute cull pass. Object ID of each instance, only visible instance has value larger than 0.
+        std::optional<AllocatedBuffer> culledInstanceObjectIDBuffer;
 
+		// Input of compute cull pass. All information of each VkDrawIndexedIndirectCommand, but instanceCount is 0.
+        std::optional<AllocatedBuffer> initialDrawIndirectBuffer;
+        // Output of compute cull pass and input of forward pass. Final drawIndirectBuffer that is used in the actual vkCmdDrawIndexedIndirect, instanceCount is updated by compute cull pass.
         std::optional<AllocatedBuffer> drawIndirectBuffer;
-        std::optional<AllocatedBuffer> completeIndirectCommandBuffer;
-
-        PassObject* get(Handle<PassObject> handle);
-
-        MaterialPass passType;
-
-        bool needsInstanceCommandsBufferRefresh = false;
-        bool needsGPUInstanceBufferRefresh = false;
     };
-
-    std::vector<RenderObject> allRenderObjects;
-    // Merged vertex buffer, index buffer and object data buffer that contains data of all render objects.
-    std::optional<AllocatedBuffer> mergedVertexBuffer;
-    std::optional<AllocatedBuffer> mergedIndexBuffer;
-    std::optional<AllocatedBuffer> objectDataBuffer;
 
     MeshPass shadowPass;
     MeshPass forwardOpaquePass;
     MeshPass forwardTransparentPass;
+
+    /*
+    *  Buffers shared by all MeshPasses.
+    */ 
+    std::vector<RenderObject> allRenderObjects;
+    // Merged vertex buffer, index buffer and object data buffer that contains data of all render objects.
+    std::optional<AllocatedBuffer> mergedVertexBuffer;
+    std::optional<AllocatedBuffer> mergedIndexBuffer;
+    std::optional<AllocatedBuffer> objectDataBuffer;    
 
 public:
 
