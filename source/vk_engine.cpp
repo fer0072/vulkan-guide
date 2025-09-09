@@ -28,7 +28,7 @@ constexpr bool bUseValidationLayers = true;
 //#define VMA_DEBUG_DETECT_CORRUPTION 1
 //#define VMA_DEBUG_MARGIN 16
 //#define VMA_DEBUG_GLOBAL_MUTEX 1
-#elif
+#else
 constexpr bool bUseValidationLayers = false;
 #endif
 
