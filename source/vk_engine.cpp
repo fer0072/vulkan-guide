@@ -6,6 +6,7 @@
 
 #include <SDL.h>
 #include <SDL_vulkan.h>
+#include <bit>
 
 #include <vk_initializers.h>
 #include <vk_types.h>
@@ -278,7 +279,7 @@ void VulkanEngine::initComputeCullEffect()
     VkPipelineLayoutCreateInfo computeLayout{};
     computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     computeLayout.pNext = nullptr;
-    computeLayout.pSetLayouts = &_cullDataDescriptorSetLayout;
+    computeLayout.pSetLayouts = &_computeCullDataDescriptorSetLayout;
     computeLayout.setLayoutCount = 1;
 
     VkPushConstantRange pushConstant{};
@@ -325,6 +326,58 @@ void VulkanEngine::initComputeCullEffect()
         });
 }
 
+void VulkanEngine::initHZBEffects()
+{
+    VkPipelineLayoutCreateInfo computeLayout{};
+    computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    computeLayout.pNext = nullptr;
+    computeLayout.pSetLayouts = &_HZBDescriptorSetLayout;
+    computeLayout.setLayoutCount = 1;
+
+    VkPushConstantRange pushConstant{};
+    pushConstant.offset = 0;
+    pushConstant.size = sizeof(HZBData);
+    pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    computeLayout.pPushConstantRanges = &pushConstant;
+    computeLayout.pushConstantRangeCount = 1;
+
+    VkPipelineLayout HZBPipelineLayout;
+
+    VK_CHECK(vkCreatePipelineLayout(_device, &computeLayout, nullptr, &HZBPipelineLayout));
+
+    VkShaderModule HZBShader;
+    if (!vkUtils::loadShaderModule("../../shaders/HZB.comp.spv", _device, &HZBShader)) {
+        fmt::print("Error when building the compute shader \n");
+    }
+
+    VkPipelineShaderStageCreateInfo stageinfo{};
+    stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stageinfo.pNext = nullptr;
+    stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    stageinfo.module = HZBShader;
+    stageinfo.pName = "main";
+
+    VkComputePipelineCreateInfo computePipelineCreateInfo{};
+    computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    computePipelineCreateInfo.pNext = nullptr;
+    computePipelineCreateInfo.layout = HZBPipelineLayout;
+    computePipelineCreateInfo.stage = stageinfo;
+
+    _HZBEffect.layout = HZBPipelineLayout;
+    _HZBEffect.name = "HZB";
+    _HZBEffect.data = {};
+
+    VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &_HZBEffect.pipeline));
+
+    // Destroy structures properly
+    vkDestroyShaderModule(_device, HZBShader, nullptr);
+    _mainDeletionQueue.push_function([&]() {
+        vkDestroyPipeline(_device, _HZBEffect.pipeline, nullptr);
+        vkDestroyPipelineLayout(_device, _HZBEffect.layout, nullptr);
+        });
+}
+
 
 void VulkanEngine::drawMain(VkCommandBuffer cmd)
 {
@@ -358,6 +411,8 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
     
     //Draw the forward pass, including opaque objects and transparent objects.
     forwardPass(cmd);
+
+    HZBPass(cmd);
 }
 
 void VulkanEngine::drawImgui(VkCommandBuffer cmd, VkImageView targetImageView)
@@ -542,7 +597,7 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 {
     if (meshPass.instanceBatches.size() == 0) return;
 
-    _cullDataDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _cullDataDescriptorSetLayout);
+    _computeCullDataDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _computeCullDataDescriptorSetLayout);
 
     DescriptorWriter writer;
     writer.addBufferDescriptorSet(0, _renderScene.objectDataBuffer.value().buffer, _renderScene.objectDataBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
@@ -558,7 +613,7 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 
     writer.addBufferDescriptorSet(4, getCurrentFrame()._sceneDataBuffer.buffer, getCurrentFrame()._sceneDataBuffer.size, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
-    writer.updateDescriptorSets(_device, _cullDataDescriptorSet);
+    writer.updateDescriptorSets(_device, _computeCullDataDescriptorSet);
 
     glm::mat4 projMat = cullParams.projMat;
     glm::mat4 transposedProjMat = glm::transpose(projMat);
@@ -590,7 +645,7 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 
     vkCmdPushConstants(cmd, _computeCullEffect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(DrawCullData), &cullData);
 
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 0, 1, &_cullDataDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 0, 1, &_computeCullDataDescriptorSet, 0, nullptr);
 
     vkCmdDispatch(cmd, static_cast<uint32_t>((meshPass.flatBatches.size() / 256) + 1), 1, 1);
 
@@ -777,6 +832,73 @@ void VulkanEngine::forwardPass(VkCommandBuffer cmd)
     vkCmdEndRendering(cmd);
 }
 
+void VulkanEngine::HZBPass(VkCommandBuffer cmd)
+{
+    auto start = std::chrono::system_clock::now();
+
+    VkImageMemoryBarrier depthImageReadBarrier = vkInit::imageMemoryBarrier(_depthImage.image,
+        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_SHADER_READ_BIT,
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, 0, 0, 0, 1, &depthImageReadBarrier);
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _HZBEffect.pipeline);
+
+    vkUtils::imageLayoutTransition(cmd, _depthPyramid.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+    for (uint32_t i = 0; i < _depthPyramidLevels; i++)
+    {
+        DescriptorWriter writer;
+        VkDescriptorImageInfo srcTarget;
+        srcTarget.sampler = _depthSampler;
+        if (i == 0)
+        {
+            writer.addImageDescriptorSet(0, _depthImage.imageView, _depthSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        }
+        else {
+            writer.addImageDescriptorSet(0, _depthPyramidMips[i - 1], _depthSampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        }
+
+        writer.addImageDescriptorSet(1, _depthPyramidMips[i], _depthSampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+
+        _HZBDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _HZBDescriptorSetLayout);
+
+        writer.updateDescriptorSets(_device, _HZBDescriptorSet);
+
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _HZBEffect.layout, 0, 1, &_HZBDescriptorSet, 0, nullptr);
+
+        uint32_t levelWidth = _depthPyramidWidth >> i;
+        uint32_t levelHeight = _depthPyramidHeight >> i;
+        if (levelHeight < 1) levelHeight = 1;
+        if (levelWidth < 1) levelWidth = 1;
+
+        HZBData hzbData = { glm::vec2(levelWidth, levelHeight) };
+
+        vkCmdPushConstants(cmd, _HZBEffect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(HZBData), &hzbData);
+
+        uint32_t groupCountX = (levelWidth + 32 - 1) / 32;
+        uint32_t groupCountY = (levelHeight + 32 - 1) / 32;
+        vkCmdDispatch(cmd, groupCountX, groupCountY, 1);
+
+
+        VkImageMemoryBarrier reduceBarrier = vkInit::imageMemoryBarrier(_depthPyramid.image, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT);
+
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, 0, 0, 0, 1, &reduceBarrier);
+    }
+
+    // The depth image can only be written in the next frame, until the HZB pass of the current frame finishes using it.
+    VkImageMemoryBarrier depthWriteBarrier = vkInit::imageMemoryBarrier(_depthImage.image, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, 0, 0, 0, 1, &depthWriteBarrier);
+
+    auto end = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    _engineStats.HZBPassTime = elapsed.count() / 1000.f;
+}
+
 void VulkanEngine::run()
 {
     SDL_Event e;
@@ -935,7 +1057,8 @@ void VulkanEngine::initVulkan()
     features12.descriptorIndexing = true; 
     features12.descriptorBindingPartiallyBound = true;
     features12.descriptorBindingVariableDescriptorCount = true;
-    features12.runtimeDescriptorArray = true;
+    features12.runtimeDescriptorArray = true; 
+    features12.samplerFilterMinmax = true;
 
     // use vkbootstrap to select a gpu.
     // We want a gpu that can write to the SDL surface and supports vulkan 1.2
@@ -969,16 +1092,23 @@ void VulkanEngine::initVulkan()
 
 void VulkanEngine::initSwapchain()
 {
+    /*
+    *  Create swapchain.
+    */
     createSwapchain(_windowExtent.width, _windowExtent.height);
 
-	//depth image size will match the window
+    /*
+    *  Create draw image.
+    */
+
+	// Draw image size will match the window
 	VkExtent3D drawImageExtent = {
 		_windowExtent.width,
 		_windowExtent.height,
 		1
 	};
 
-	//hardcoding the draw format to 32 bit float
+	// Hardcoding the draw format to 32 bit float
 	_drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
     _drawImage.imageExtent = drawImageExtent;
 
@@ -989,12 +1119,12 @@ void VulkanEngine::initSwapchain()
 
 	VkImageCreateInfo rimg_info = vkInit::imageCreateInfo(_drawImage.imageFormat, drawImageUsages, drawImageExtent);
 
-	//for the draw image, we want to allocate it from gpu local memory
+	// For the draw image, we want to allocate it from gpu local memory
 	VmaAllocationCreateInfo rimg_allocinfo = {};
 	rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 	rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	//allocate and create the image
+	// Allocate and create the image
 	vmaCreateImage(_allocator, &rimg_info, &rimg_allocinfo, &_drawImage.image, &_drawImage.allocation, nullptr);
 
 	//build a image-view for the draw image to use for rendering
@@ -1002,31 +1132,90 @@ void VulkanEngine::initSwapchain()
 
 	VK_CHECK(vkCreateImageView(_device, &rview_info, nullptr, &_drawImage.imageView));
 
-    //create a depth image too
-	//hardcoding the draw format to 32 bit float
+    /*
+    *  Create depth image.
+    */
+
+	// Hardcoding the draw format to 32 bit float
 	_depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
     _depthImage.imageExtent = drawImageExtent;
 	VkImageUsageFlags depthImageUsages{};
-	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT ;
 
 	VkImageCreateInfo dimg_info = vkInit::imageCreateInfo(_depthImage.imageFormat, depthImageUsages, drawImageExtent);
 
-	//allocate and create the image
+	// Allocate and create the image
 	vmaCreateImage(_allocator, &dimg_info, &rimg_allocinfo, &_depthImage.image, &_depthImage.allocation, nullptr);
 
-	//build a image-view for the draw image to use for rendering
+	// Build a image-view for the draw image to use for rendering
 	VkImageViewCreateInfo dview_info = vkInit::imageViewCreateInfo(_depthImage.imageFormat, _depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
 
 	VK_CHECK(vkCreateImageView(_device, &dview_info, nullptr, &_depthImage.imageView));
 
+    /*
+    *  Create depth pyramid image.
+    */
 
-	//add to deletion queues
+    // Create depth pyramid image.
+    _depthPyramidWidth = std::bit_ceil(_windowExtent.width);
+    _depthPyramidHeight = std::bit_ceil(_windowExtent.height);
+    _depthPyramidLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(_depthPyramidWidth, _depthPyramidHeight)))) + 1;
+
+    VkExtent3D pyramidExtent = {
+        static_cast<uint32_t>(_depthPyramidWidth),
+        static_cast<uint32_t>(_depthPyramidHeight),
+        1
+    };
+
+    _depthPyramid = AllocatedImage::createImage(this, pyramidExtent, VK_FORMAT_R32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, true);
+
+    // Create depth pyramid image views of each mip level.
+    for (uint32_t i = 0; i < _depthPyramidLevels; i++)
+    {
+        VkImageViewCreateInfo imageViewCreateInfo = vkInit::imageViewCreateInfo(VK_FORMAT_R32_SFLOAT, _depthPyramid.image, VK_IMAGE_ASPECT_COLOR_BIT);
+        imageViewCreateInfo.subresourceRange.levelCount = 1;
+        imageViewCreateInfo.subresourceRange.baseMipLevel = i;
+
+        vkCreateImageView(_device, &imageViewCreateInfo, nullptr, &_depthPyramidMips[i]);
+
+        _mainDeletionQueue.push_function([=]() {
+            vkDestroyImageView(_device, _depthPyramidMips[i], nullptr);
+            });
+    }
+
+    // Create depth pyramid sampler.
+    VkSamplerCreateInfo createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    createInfo.magFilter = VK_FILTER_LINEAR;
+    createInfo.minFilter = VK_FILTER_LINEAR;
+    createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    createInfo.minLod = 0;
+    createInfo.maxLod = 16.f;
+
+    VkSamplerReductionModeCreateInfoEXT createInfoReduction = { VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO_EXT };
+    createInfoReduction.reductionMode = VK_SAMPLER_REDUCTION_MODE_MIN;
+
+    createInfo.pNext = &createInfoReduction;
+
+
+    VK_CHECK(vkCreateSampler(_device, &createInfo, 0, &_depthSampler));
+
+	/*
+    *  Add to deletion queues.
+    */
 	_mainDeletionQueue.push_function([=]() {
 		vkDestroyImageView(_device, _drawImage.imageView, nullptr);
 		vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
 
 		vkDestroyImageView(_device, _depthImage.imageView, nullptr);
 		vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
+
+        vkDestroySampler(_device, _depthSampler, nullptr);
+        vkDestroyImageView(_device, _depthPyramid.imageView, nullptr);
+        vmaDestroyImage(_allocator, _depthPyramid.image, _depthPyramid.allocation);
 	});
 }
 
@@ -1241,6 +1430,7 @@ void VulkanEngine::initPipelines()
     // COMPUTE PIPELINES
     initBackgroundEffects();
     initComputeCullEffect();
+    initHZBEffects();
 
     _metalRoughMaterial.buildPipelines(this);
 }
@@ -1258,6 +1448,9 @@ void VulkanEngine::initDescriptors()
     _mainDeletionQueue.push_function(
         [&]() { vkDestroyDescriptorPool(_device, _globalDescriptorAllocator.pool, nullptr); });
 
+    /*
+    *  Create descriptor set layouts.
+    */
     {
         DescriptorLayoutBuilder builder;
         builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1);
@@ -1271,7 +1464,7 @@ void VulkanEngine::initDescriptors()
         builder.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
         //builder.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1);
         builder.addBinding(4, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
-        _cullDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
+        _computeCullDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
     }
     {
         DescriptorLayoutBuilder builder;
@@ -1293,12 +1486,19 @@ void VulkanEngine::initDescriptors()
         builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
         _objectDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT);
     }
+    {
+        DescriptorLayoutBuilder builder;
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1);
+        builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1);
+        _HZBDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
+    }
 
     _mainDeletionQueue.push_function([&]() {
         vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _computeCullDataDescriptorSetLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _globalDescriptorSetLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _objectDataDescriptorSetLayout, nullptr);
-        vkDestroyDescriptorSetLayout(_device, _cullDataDescriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _HZBDescriptorSetLayout, nullptr);
     });
 
     _drawImageDescriptors = _globalDescriptorAllocator.allocate(_device, _drawImageDescriptorLayout);

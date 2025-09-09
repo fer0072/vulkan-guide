@@ -88,6 +88,11 @@ struct DrawCullData
 };
 //< Compute cull related data.
 
+struct HZBData
+{
+    glm::vec2 imageSize;
+};
+
 struct FrameData {
     VkSemaphore _swapchainSemaphore, _renderSemaphore;
     VkFence _renderFence;
@@ -209,9 +214,13 @@ private:
 
     void initPipelines();
 
+    //> Init compute effects.
     void initBackgroundEffects();
 
     void initComputeCullEffect();
+
+    void initHZBEffects();
+    //< Init compute effects.
 
     void initDescriptors();
 
@@ -247,6 +256,8 @@ private:
     void shadowPass(VkCommandBuffer cmd);
 
     void forwardPass(VkCommandBuffer cmd);
+
+    void HZBPass(VkCommandBuffer cmd);
 	//< Draw related behaviours.
 
 private:
@@ -288,17 +299,31 @@ private:
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
 
+    //> HZB resources
+    AllocatedImage _depthPyramid;
+    VkSampler _depthSampler;
+    VkImageView _depthPyramidMips[16] = {};
+    uint32_t _depthPyramidLevels = 0;
+    int32_t _depthPyramidWidth = 0;
+    int32_t _depthPyramidHeight = 0;
+    //< HZB resources
+
     std::vector<ComputeEffect> _backgroundEffects;
     int _currentBackgroundEffect = 0;
     ComputeEffect _computeCullEffect;
+    ComputeEffect _HZBEffect;
 
     VkDescriptorSetLayout _drawImageDescriptorLayout;
     VkDescriptorSet _drawImageDescriptors;
-    VkDescriptorSetLayout _cullDataDescriptorSetLayout;
-    VkDescriptorSet _cullDataDescriptorSet;
+
+    VkDescriptorSetLayout _computeCullDataDescriptorSetLayout;
+    VkDescriptorSet _computeCullDataDescriptorSet;
     
     VkDescriptorSet _globalDescriptorSet;
     VkDescriptorSet _objectDataDescriptorSet;
+
+    VkDescriptorSetLayout _HZBDescriptorSetLayout;
+    VkDescriptorSet _HZBDescriptorSet;
 
     std::vector<VkBufferMemoryBarrier> postCullBarriers;
 

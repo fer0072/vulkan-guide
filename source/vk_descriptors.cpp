@@ -85,11 +85,11 @@ VkDescriptorSet DescriptorAllocator::allocate(VkDevice device, VkDescriptorSetLa
 }
 //< descriptor_alloc
 //> addImageDescriptorSet
-void DescriptorWriter::addImageDescriptorSet(int binding,VkImageView image, VkSampler sampler,  VkImageLayout layout, VkDescriptorType type)
+void DescriptorWriter::addImageDescriptorSet(int binding,VkImageView imageView, VkSampler sampler,  VkImageLayout layout, VkDescriptorType type)
 {
     VkDescriptorImageInfo& info = imageInfos.emplace_back(VkDescriptorImageInfo{
 		.sampler = sampler,
-		.imageView = image,
+		.imageView = imageView,
 		.imageLayout = layout
 	});
 
