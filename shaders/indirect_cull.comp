@@ -125,7 +125,7 @@ bool IsVisible(uint objectIndex)
 
 	if(cullData.distanceCullEnabled != 0)
 	{
-		visible = cameraSphereNearDist < cullData.drawDist; 
+		visible = visible && cameraSphereNearDist < cullData.drawDist; 
 	}
 
 	//flip Y because we access depth texture that way
