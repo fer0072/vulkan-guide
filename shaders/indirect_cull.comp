@@ -101,11 +101,10 @@ bool projectSphere(vec3 C, float r, float znear, float P00, float P11, out vec4 
 
 bool IsVisible(uint objectIndex)
 {
-	uint index = objectIndex;
+	vec4 sphereBounds = objectDataBuffer.objects[objectIndex].spherebounds;
+	mat4 modelMat = objectDataBuffer.objects[objectIndex].model;
 
-	vec4 sphereBounds = objectDataBuffer.objects[index].spherebounds;
-	mat4 modelMat = objectDataBuffer.objects[index].model;
-
+	// Culling is done under view space.
 	vec3 center = (cullData.view * modelMat * vec4(sphereBounds.xyz,1.f)).xyz;
 	float radius = sphereBounds.w;
 	
@@ -116,15 +115,17 @@ bool IsVisible(uint objectIndex)
 	// Test if the minimum distance to upper / lower frustum plane is larger than -radius.
 	visible = visible && center.z * cullData.frustum[3] - abs(center.y) * cullData.frustum[2] > -radius;
 
-	// Test near / far frustun plane.
-	float cameraSphereNearDist = -center.z - radius;
-	float cameraSphereFarDist  = -center.z + radius;
-	if (cameraSphereFarDist < cullData.znear) visible = false;
-	if (cameraSphereNearDist > cullData.zfar) visible = false;
+	// Test near / far frustum plane.
+	float cameraSphereFarPos = center.z - radius;
+	float cameraSphereNearPos  = center.z + radius;
+	// Pos under view space is negative value, while znear and zfar is positive value.
+	// So use -cameraSphereFarPos and -cameraSphereNearPos here.
+	visible = visible && -cameraSphereFarPos > cullData.znear;
+	visible = visible && -cameraSphereNearPos < cullData.zfar;
 
 	if(cullData.distanceCullEnabled != 0)
 	{
-		visible = visible && cameraSphereNearDist < cullData.drawDist; 
+		visible = visible && -cameraSphereNearPos < cullData.drawDist; 
 	}
 
 	// Flip Y because we access depth texture that way

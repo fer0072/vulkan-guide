@@ -43,6 +43,9 @@ namespace vkGlobals
     float g_zNear = 0.1f;
     float g_zFar = 5000.0f;
     float g_maxDrawDist = 5000.0f;
+
+    bool g_enableOcclusionCull = true;
+    bool g_enableDistanceCull = true;
 }
 
 glm::vec4 normalizePlane(glm::vec4 p)
@@ -631,13 +634,12 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
     cullData.frustum[2] = frustumY.y;
     cullData.frustum[3] = frustumY.z;
     cullData.drawCount = static_cast<uint32_t>(meshPass.flatBatches.size());
-    cullData.distanceCullEnabled = cullParams.distanceCull;
-    cullData.occlusionEnabled = cullParams.occlusionCull;
+    cullData.distanceCullEnabled = (int32_t)cullParams.distanceCull;
+    cullData.occlusionEnabled = (int32_t)cullParams.occlusionCull;
     cullData.lodBase = 10.f;
     cullData.lodStep = 1.5f;
-    //TBD
-    cullData.pyramidWidth = 1.0f;// static_cast<float>(depthPyramidWidth);
-    cullData.pyramidHeight = 1.0f;// static_cast<float>(depthPyramidHeight);
+    cullData.pyramidWidth = static_cast<float>(_depthPyramidWidth);
+    cullData.pyramidHeight = static_cast<float>(_depthPyramidHeight);
     cullData.viewMat = cullParams.viewMat;//get_view_matrix();
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.pipeline);
@@ -668,8 +670,8 @@ void VulkanEngine::computeCullPass(VkCommandBuffer cmd)
     CullParams forwardCullParams;
     forwardCullParams.viewMat = _mainCamera.getViewMatrix();
 	forwardCullParams.projMat = _mainCamera.getProjectionMatrix();
-    forwardCullParams.distanceCull = true;
-    forwardCullParams.occlusionCull = true;
+    forwardCullParams.distanceCull = vkGlobals::g_enableDistanceCull;
+    forwardCullParams.occlusionCull = vkGlobals::g_enableOcclusionCull;
     forwardCullParams.drawDist = vkGlobals::g_maxDrawDist;
     forwardCullParams.zNear = vkGlobals::g_zNear;
     forwardCullParams.zFar = vkGlobals::g_zFar;
