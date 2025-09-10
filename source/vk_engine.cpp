@@ -1570,13 +1570,13 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 
 	pipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
 
-	pipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	pipelineBuilder.setCullMode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
 
 	pipelineBuilder.disableMultisampling();
 
 	pipelineBuilder.disableBlending();
 
-	pipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
+	pipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_LESS_OR_EQUAL);
 
 	//render format
 	pipelineBuilder.setColorAttachmentFormat(engine->_drawImage.imageFormat);
@@ -1593,7 +1593,7 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	// create the forwardTransparent variant
 	pipelineBuilder.enableBlendingAdditive();
 
-	pipelineBuilder.enableDepthTest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
+	pipelineBuilder.enableDepthTest(false, VK_COMPARE_OP_LESS_OR_EQUAL);
 
 	transparentPipeline.pipeline = pipelineBuilder.buildPipeline(engine->getDevice());
 	
