@@ -17,6 +17,6 @@ public:
     void updateCamera(float deltaSeconds);
 
     glm::mat4 getViewMatrix() const;
-    glm::mat4 getProjectionMatrix(bool bReverse = true) const;
+    glm::mat4 getProjectionMatrix() const;
     glm::mat4 getRotationMatrix() const;
 };
