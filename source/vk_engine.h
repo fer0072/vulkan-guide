@@ -76,11 +76,10 @@ struct CullParams {
 struct DrawCullData
 {
     glm::mat4 viewMat;
-    float P00, P11, zNear, zFar, drawDist; // symmetric projection parameters
+    glm::mat4 projMat;
     float frustum[4]; // data for left/right/top/bottom frustum planes
-    float lodBase, lodStep; // lod distance i = base * pow(step, i)
     float pyramidWidth, pyramidHeight; // depth pyramid size in texels
-
+    float zNear, zFar, drawDist;
     uint32_t drawCount;
 
     int32_t occlusionEnabled;

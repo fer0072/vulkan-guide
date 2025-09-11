@@ -6,11 +6,10 @@ layout (local_size_x = 256) in;
 struct DrawCullData
 {
 	mat4 view;
-	float P00, P11, znear, zfar, drawDist; // symmetric projection parameters
+	mat4 proj;
 	float frustum[4]; // data for left/right/top/bottom frustum planes
-	float lodBase, lodStep; // lod distance i = base * pow(step, i)
 	float pyramidWidth, pyramidHeight; // depth pyramid size in texels
-
+	float znear, zfar, drawDist;
 	uint drawCount;
 
 	int occlusionEnabled;
@@ -28,7 +27,7 @@ struct ObjectData{
 }; 
 
 // Object data buffer.
-layout(std140,set = 0, binding = 0) readonly buffer ObjectDataBuffer{   
+layout(std140,set = 0, binding = 0) buffer ObjectDataBuffer{   
 
 	ObjectData objects[];
 } objectDataBuffer;
@@ -75,49 +74,18 @@ layout(set = 0, binding = 5) uniform  SceneData{
 	vec4 sunlightColor;
 } sceneData;
 
-
-// 2D Polyhedral Bounds of a Clipped, Perspective-Projected 3D Sphere. Michael Mara, Morgan McGuire. 2013
-bool projectSphere(vec3 C, float r, float znear, float P00, float P11, out vec4 aabb)
+bool frustumCull(vec3 center_view, float radius_world)
 {
-	if (C.z < r + znear)
-		return false;
-
-	vec2 cx = -C.xz;
-	vec2 vx = vec2(sqrt(dot(cx, cx) - r * r), r);
-	vec2 minx = mat2(vx.x, vx.y, -vx.y, vx.x) * cx;
-	vec2 maxx = mat2(vx.x, -vx.y, vx.y, vx.x) * cx;
-
-	vec2 cy = -C.yz;
-	vec2 vy = vec2(sqrt(dot(cy, cy) - r * r), r);
-	vec2 miny = mat2(vy.x, vy.y, -vy.y, vy.x) * cy;
-	vec2 maxy = mat2(vy.x, -vy.y, vy.y, vy.x) * cy;
-
-	aabb = vec4(minx.x / minx.y * P00, miny.x / miny.y * P11, maxx.x / maxx.y * P00, maxy.x / maxy.y * P11);
-	aabb = aabb.xwzy * vec4(0.5f, -0.5f, 0.5f, -0.5f) + vec4(0.5f); // clip space -> uv space
-
-	return true;
-}
-
-
-bool IsVisible(uint objectIndex)
-{
-	vec4 sphereBounds = objectDataBuffer.objects[objectIndex].spherebounds;
-	mat4 modelMat = objectDataBuffer.objects[objectIndex].model;
-
-	// Culling is done under view space.
-	vec3 center = (cullData.view * modelMat * vec4(sphereBounds.xyz,1.f)).xyz;
-	float radius = sphereBounds.w;
-	
 	bool visible = true;
 
-	// Test if the minimum distance to left / right frustum plane is larger than -radius.
-	visible = visible && center.z * cullData.frustum[1] - abs(center.x) * cullData.frustum[0] > -radius; 
-	// Test if the minimum distance to upper / lower frustum plane is larger than -radius.
-	visible = visible && center.z * cullData.frustum[3] - abs(center.y) * cullData.frustum[2] > -radius;
+	// Test if the minimum distance to left / right frustum plane is larger than -radius_world.
+	visible = visible && center_view.z * cullData.frustum[1] - abs(center_view.x) * cullData.frustum[0] > -radius_world; 
+	// Test if the minimum distance to upper / lower frustum plane is larger than -radius_world.
+	visible = visible && center_view.z * cullData.frustum[3] - abs(center_view.y) * cullData.frustum[2] > -radius_world;
 
 	// Test near / far frustum plane.
-	float cameraSphereFarPos = center.z - radius;
-	float cameraSphereNearPos  = center.z + radius;
+	float cameraSphereFarPos = center_view.z - radius_world;
+	float cameraSphereNearPos  = center_view.z + radius_world;
 	// Pos under view space is negative value, while znear and zfar is positive value.
 	// So use -cameraSphereFarPos and -cameraSphereNearPos here.
 	visible = visible && -cameraSphereFarPos > cullData.znear;
@@ -127,27 +95,105 @@ bool IsVisible(uint objectIndex)
 	{
 		visible = visible && -cameraSphereNearPos < cullData.drawDist; 
 	}
+	
+	return visible;
+}
 
-	// Flip Y because we access depth texture that way
-	center.y *= -1;
+// Use HZB depth pyramid to do occlusion cull.
+bool occlusionCull(vec3 center_view, float radius_world, float znear, float zfar, mat4 proj, mat4 view, uint objectIndex)
+{
+	// Caculate LOD for sampling the depth pyramid.
+	vec4 center_clip = proj * vec4(center_view,1.f);
+	vec4 point_clip = proj * vec4(center_view + vec3(radius_world, 0.0f, 0.0f),1.f);
 
-	// Use HZB depth pyramid to do occlusion cull.
+	vec3 center_ndc = center_clip.xyz / center_clip.w;
+	vec3 point_ndc = point_clip.xyz / point_clip.w;
+
+	float R_ndc = length(point_ndc - center_ndc);
+	float texelCount = R_ndc * cullData.pyramidWidth;
+
+	float texelThreshold = 5.0f; 
+	if(texelCount <= texelThreshold){
+		return true; // Skip small objects.
+	} 
+
+	float level = floor(log2(max(texelCount * 0.7f, 1.0f)));
+
+	// Calculate the depth of the nearest point on the bounding sphere.
+	float distC = length(center_view);
+	vec3 nearestP = center_view * ((distC - radius_world) / distC);
+
+	if(nearestP.z >= -znear - 1e-5)
+	{
+		return true; // Skip object that intersects with the near plane.
+	}
+
+	vec4 nearestP_clip = proj * vec4(nearestP, 1.0f);
+	vec3 nearestP_ndc = nearestP_clip.xyz / nearestP_clip.w;
+	vec2 uv = nearestP_ndc.xy * 0.5f + 0.5f;
+
+	// Use depth in view space.
+	int sampleCnt = 0;
+	int sampleTarget = 1;
+	vec3 samplePos_view[4];
+	if(texelCount > 16.0f) sampleTarget = 2;
+	if(texelCount > 64.0f) sampleTarget = 6;
+
+	vec3 cameraRight   = vec3(view[0][0], view[1][0], view[2][0]);
+	vec3 cameraUp      = vec3(view[0][1], view[1][1], view[2][1]);
+	vec3 cameraForward = -vec3(view[0][2], view[1][2], view[2][2]);
+
+	samplePos_view[sampleCnt++] = center_view - cameraForward * radius_world; 
+	if(sampleTarget >= 2)
+	{
+		samplePos_view[sampleCnt++] = center_view + cameraForward * radius_world; 
+	}
+	if(sampleTarget >= 6)
+	{
+		samplePos_view[sampleCnt++] = center_view + cameraRight * radius_world;;
+		samplePos_view[sampleCnt++] = center_view - cameraRight * radius_world;
+		samplePos_view[sampleCnt++] = center_view + cameraUp * radius_world;
+    	samplePos_view[sampleCnt++] = center_view - cameraUp * radius_world;
+	}
+
+	for (int i = 0; i < sampleTarget; i++) 
+	{
+		vec4 samplePos_clip = proj * vec4(samplePos_view[i], 1.0);
+		vec3 samplePos_ndc = samplePos_clip.xyz / samplePos_clip.w;
+		vec2 uv = samplePos_ndc.xy * 0.5 + 0.5;
+		uv = clamp(uv, vec2(0.0), vec2(1.0));
+
+		float depthTex_ndc = textureLod(depthPyramid, uv, level).x;
+		float depthTex_view = -(znear * zfar) / (znear + depthTex_ndc * (zfar - znear));
+		float pointDepth_view = samplePos_view[i].z;
+		float depthBias = max(abs(pointDepth_view) * 0.002, 0.03) * (1.0 + level * 0.75);
+
+		if (pointDepth_view >= depthTex_view - depthBias) {
+			return true; // If any sample point is visible, then think this object is visible.
+		}
+	}
+
+	return false;
+}
+
+bool IsVisible(uint objectIndex)
+{
+	vec4 sphereBounds = objectDataBuffer.objects[objectIndex].spherebounds;
+	mat4 modelMat = objectDataBuffer.objects[objectIndex].model;
+
+	// Culling is done under view space.
+	vec3 center_view = (cullData.view * modelMat * vec4(sphereBounds.xyz,1.f)).xyz;
+	float radius_world = sphereBounds.w;
+	
+	bool visible = true;
+
+	// Frustum cull.
+	visible = visible && frustumCull(center_view, radius_world);	
+
+	// Occlusion cull.
 	if(visible && cullData.occlusionEnabled != 0)
 	{
-		vec4 aabb;
-		if (projectSphere(center, radius, cullData.znear, cullData.P00, cullData.P11, aabb))
-		{
-			float width = (aabb.z - aabb.x) * cullData.pyramidWidth;
-			float height = (aabb.w - aabb.y) * cullData.pyramidHeight;
-
-			float level = floor(log2(max(width, height)));
-
-			// Sampler is set up to do min reduction, so this computes the minimum depth of a 2x2 texel quad
-            float depth = textureLod(depthPyramid, (aabb.xy + aabb.zw) * 0.5, level).x;
-			float depthSphere = cullData.znear / (center.z - radius);
-
-			visible = visible && depthSphere >= depth;
-		}
+		visible = visible && occlusionCull(center_view, radius_world, cullData.znear, cullData.zfar, cullData.proj, cullData.view, objectIndex);
 	}
 
 	return visible;

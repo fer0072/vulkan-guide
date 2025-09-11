@@ -624,8 +624,8 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
     glm::vec4 frustumY = normalizePlane(transposedProjMat[3] + transposedProjMat[1]); // y + w < 0
 
     DrawCullData cullData = {};
-    cullData.P00 = projMat[0][0];
-    cullData.P11 = projMat[1][1];
+    cullData.viewMat = cullParams.viewMat;
+    cullData.projMat = cullParams.projMat;
     cullData.zNear = cullParams.zNear;
     cullData.zFar = cullParams.zFar;
     cullData.drawDist = cullParams.drawDist;
@@ -636,11 +636,9 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
     cullData.drawCount = static_cast<uint32_t>(meshPass.flatBatches.size());
     cullData.distanceCullEnabled = (int32_t)cullParams.distanceCull;
     cullData.occlusionEnabled = (int32_t)cullParams.occlusionCull;
-    cullData.lodBase = 10.f;
-    cullData.lodStep = 1.5f;
     cullData.pyramidWidth = static_cast<float>(_depthPyramidWidth);
     cullData.pyramidHeight = static_cast<float>(_depthPyramidHeight);
-    cullData.viewMat = cullParams.viewMat;//get_view_matrix();
+    
 
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.pipeline);
 
@@ -1197,7 +1195,7 @@ void VulkanEngine::initSwapchain()
     createInfo.maxLod = 16.f;
 
     VkSamplerReductionModeCreateInfoEXT createInfoReduction = { VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO_EXT };
-    createInfoReduction.reductionMode = VK_SAMPLER_REDUCTION_MODE_MIN;
+    createInfoReduction.reductionMode = VK_SAMPLER_REDUCTION_MODE_MAX;
 
     createInfo.pNext = &createInfoReduction;
 
