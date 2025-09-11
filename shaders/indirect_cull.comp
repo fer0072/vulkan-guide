@@ -135,23 +135,22 @@ bool occlusionCull(vec3 center_view, float radius_world, float znear, float zfar
 	// Use depth in view space.
 	int sampleCnt = 0;
 	int sampleTarget = 1;
-	vec3 samplePos_view[4];
-	if(texelCount > 16.0f) sampleTarget = 2;
-	if(texelCount > 64.0f) sampleTarget = 6;
+	vec3 samplePos_view[5];
+	if(texelCount > 32.0f) sampleTarget = 3;
+	if(texelCount > 64.0f) sampleTarget = 5;
 
 	vec3 cameraRight   = vec3(view[0][0], view[1][0], view[2][0]);
 	vec3 cameraUp      = vec3(view[0][1], view[1][1], view[2][1]);
-	vec3 cameraForward = -vec3(view[0][2], view[1][2], view[2][2]);
+	vec3 cameraForward = normalize(center_view);
 
 	samplePos_view[sampleCnt++] = center_view - cameraForward * radius_world; 
 	if(sampleTarget >= 2)
 	{
-		samplePos_view[sampleCnt++] = center_view + cameraForward * radius_world; 
+		samplePos_view[sampleCnt++] = center_view + cameraRight * radius_world;;
+		samplePos_view[sampleCnt++] = center_view - cameraRight * radius_world;
 	}
 	if(sampleTarget >= 6)
 	{
-		samplePos_view[sampleCnt++] = center_view + cameraRight * radius_world;;
-		samplePos_view[sampleCnt++] = center_view - cameraRight * radius_world;
 		samplePos_view[sampleCnt++] = center_view + cameraUp * radius_world;
     	samplePos_view[sampleCnt++] = center_view - cameraUp * radius_world;
 	}
