@@ -10,12 +10,13 @@ layout (location = 2) in vec4 vColor;
 layout (location = 0) out vec3 outNormal;
 layout (location = 1) out vec3 outColor;
 layout (location = 2) out vec2 outUV;
-//layout(location = 3) out vec4 ShadowCoord;
+layout (location = 3) out vec4 outShadowCoord;
 
 layout(set = 0, binding = 0) uniform SceneData{   
 	mat4 view;
 	mat4 proj;
 	mat4 viewproj;
+	mat4 lightViewProj;
 	vec4 ambientColor;
 	vec4 sunlightDirection; //w for sun power
 	vec4 sunlightColor;
@@ -61,4 +62,6 @@ void main()
 
 	outUV.x = vPosition_uvx.w;
 	outUV.y = vNormal_uvy.w;
+
+	outShadowCoord = sceneData.lightViewProj * (modelMatrix* vec4(vPosition_uvx.xyz, 1.0f)  );
 }

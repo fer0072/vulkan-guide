@@ -20,13 +20,13 @@
 
 #define VMA_IMPLEMENTATION
 #ifdef _DEBUG
-#define VMA_DEBUG_LOG_FORMAT(format, ...)  printf((format), __VA_ARGS__)
-#define VMA_DEBUG_LOG(str)                 printf("%s\n", (str))
-#define VMA_DEBUG_INITIALIZE_ALLOCATIONS 1
-#define VMA_DEBUG_DETECT_CORRUPTION 1
-#define VMA_DEBUG_MARGIN 16
-#define VMA_DEBUG_GLOBAL_MUTEX 1
-constexpr bool bUseValidationLayers = false;
+//#define VMA_DEBUG_LOG_FORMAT(format, ...)  printf((format), __VA_ARGS__)
+//#define VMA_DEBUG_LOG(str)                 printf("%s\n", (str))
+//#define VMA_DEBUG_INITIALIZE_ALLOCATIONS 1
+//#define VMA_DEBUG_DETECT_CORRUPTION 1
+//#define VMA_DEBUG_MARGIN 16
+//#define VMA_DEBUG_GLOBAL_MUTEX 1
+constexpr bool bUseValidationLayers = true;
 #else
 constexpr bool bUseValidationLayers = false;
 #endif
@@ -413,24 +413,6 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
 
     computeCullPass(cmd);
 
-    // transition our main draw image into general layout so we can write into it
-    // we will overwrite it all so we dont care about what was the older layout
-    vkUtils::imageLayoutTransition(cmd, _drawImage.image, 
-        VK_IMAGE_LAYOUT_UNDEFINED, 
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
-        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        0, 
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
-
-    vkUtils::imageLayoutTransition(cmd, _depthImage.image, 
-        VK_IMAGE_LAYOUT_UNDEFINED, 
-        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, 
-        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 
-        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 
-        0, 
-        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
-
     shadowPass(cmd);
     
     forwardPass(cmd); //Draw the forward pass, including opaque objects and transparent objects.
@@ -464,9 +446,9 @@ void VulkanEngine::updateSceneData()
 
     _mainLight.lightPosition = _mainCamera.position;
 
-    _lightData.view = _mainLight.getViewMatrix();
-    _lightData.proj = _mainLight.getProjectionMatrix();
-    _lightData.viewproj = _lightData.proj * _lightData.view;
+    glm::mat4 lightView = _mainLight.getViewMatrix();
+    glm::mat4 lightProj = _mainLight.getProjectionMatrix();
+    _sceneData.sunlightViewProj = lightProj * lightView;
 }
 
 void VulkanEngine::draw()
@@ -641,7 +623,7 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 {
     if (meshPass.instanceBatches.size() == 0) return;
 
-    _computeCullDataDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _computeCullDataDescriptorSetLayout);
+    VkDescriptorSet descriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _computeCullDataDescriptorSetLayout);
 
     DescriptorWriter writer;
 
@@ -653,7 +635,7 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 
     writer.addImageDescriptorSet(3, _depthPyramid.imageView, _depthSampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-    writer.updateDescriptorSets(_device, _computeCullDataDescriptorSet);
+    writer.updateDescriptorSets(_device, descriptorSet);
 
     glm::mat4 projMat = cullParams.projMat;
     glm::mat4 transposedProjMat = glm::transpose(projMat);
@@ -684,7 +666,7 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 0, 1, &_objectDataDescriptorSet, 0, nullptr);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 1, 1, &getCurrentFrame()._sceneDataDescriptorSet, 0, nullptr);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 2, 1, &_computeCullDataDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 2, 1, &descriptorSet, 0, nullptr);
 
     vkCmdDispatch(cmd, static_cast<uint32_t>((meshPass.flatBatches.size() / 256) + 1), 1, 1);
 
@@ -773,20 +755,20 @@ void VulkanEngine::shadowPass(VkCommandBuffer cmd)
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
     // Add scene date buffer to the global descriptor set.
-    LightData* lightUniformData = (LightData*)AllocatedBuffer::mapBuffer(_allocator, getCurrentFrame()._sceneLightDataBuffer);
-    *lightUniformData = _lightData;
-    AllocatedBuffer::unmapBuffer(_allocator, getCurrentFrame()._sceneLightDataBuffer);
+    SceneData* sceneUniformData = (SceneData*)AllocatedBuffer::mapBuffer(_allocator, getCurrentFrame()._sceneDataBuffer);
+    *sceneUniformData = _sceneData;
+    AllocatedBuffer::unmapBuffer(_allocator, getCurrentFrame()._sceneDataBuffer);
 
     DescriptorWriter writer;
-    writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneLightDataBuffer.buffer, sizeof(LightData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    writer.updateDescriptorSets(_device, getCurrentFrame()._sceneLightDataDescriptorSet);
+    writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneDataBuffer.buffer, sizeof(SceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.updateDescriptorSets(_device, getCurrentFrame()._sceneDataDescriptorSet);
 
     RenderScene::MeshPass& meshPass = _renderScene.shadowPass;
 
-    _instanceObjectIDDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _instanceObjectIDDescriptorSetLayout);
+    VkDescriptorSet instanceObjectIDDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _instanceObjectIDDescriptorSetLayout);
     writer.clear();
     writer.addBufferDescriptorSet(0, meshPass.culledInstanceObjectIDBuffer.value().buffer, meshPass.culledInstanceObjectIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    writer.updateDescriptorSets(_device, _instanceObjectIDDescriptorSet);
+    writer.updateDescriptorSets(_device, instanceObjectIDDescriptorSet);
         
     if (meshPass.instanceBatches.size() > 0)
     {
@@ -795,9 +777,9 @@ void VulkanEngine::shadowPass(VkCommandBuffer cmd)
         vkCmdBindIndexBuffer(cmd, _renderScene.mergedIndexBuffer.value().buffer, 0, VK_INDEX_TYPE_UINT32);
 
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _metalRoughMaterial.shadowPipeline.pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _metalRoughMaterial.shadowPipeline.layout, 0, 1, &getCurrentFrame()._sceneLightDataDescriptorSet, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _metalRoughMaterial.shadowPipeline.layout, 0, 1, &getCurrentFrame()._sceneDataDescriptorSet, 0, nullptr);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _metalRoughMaterial.shadowPipeline.layout, 1, 1, &_objectDataDescriptorSet, 0, nullptr);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _metalRoughMaterial.shadowPipeline.layout, 2, 1, &_instanceObjectIDDescriptorSet, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _metalRoughMaterial.shadowPipeline.layout, 2, 1, &instanceObjectIDDescriptorSet, 0, nullptr);
 
         for (int i = 0; i < meshPass.indirectBatches.size(); i++)
         {
@@ -814,15 +796,24 @@ void VulkanEngine::shadowPass(VkCommandBuffer cmd)
     _engineStats.shadowPassTime = elapsed.count() / 1000.f;
 
     vkCmdEndRendering(cmd);
+
+    vkUtils::imageLayoutTransition(cmd, _shadowMap.image,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT);
 }
 
 void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass)
 {
-    _instanceObjectIDDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _instanceObjectIDDescriptorSetLayout);
+    VkDescriptorSet instanceObjectIDDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _instanceObjectIDDescriptorSetLayout);
 
     DescriptorWriter writer;
     writer.addBufferDescriptorSet(0, meshPass.culledInstanceObjectIDBuffer.value().buffer, meshPass.culledInstanceObjectIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-    writer.updateDescriptorSets(_device, _instanceObjectIDDescriptorSet);
+    writer.updateDescriptorSets(_device, instanceObjectIDDescriptorSet);
 
     if (meshPass.instanceBatches.size() > 0)
     {
@@ -856,7 +847,8 @@ void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPa
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 0, 1, &getCurrentFrame()._sceneDataDescriptorSet, 0, nullptr);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 1, 1, &_texturesDescriptorSet, 0, nullptr);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 2, 1, &_objectDataDescriptorSet, 0, nullptr);
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 3, 1, &_instanceObjectIDDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 3, 1, &instanceObjectIDDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 5, 1, &_shadowMapDescriptorSet, 0, nullptr);
             }
 
             if (lastDescriptorSet != newDescriptorSet)
@@ -873,6 +865,25 @@ void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPa
 void VulkanEngine::forwardPass(VkCommandBuffer cmd)
 {
     auto start = std::chrono::system_clock::now();
+
+    // transition our main draw image into general layout so we can write into it
+    // we will overwrite it all so we dont care about what was the older layout
+    vkUtils::imageLayoutTransition(cmd, _drawImage.image,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+
+    vkUtils::imageLayoutTransition(cmd, _depthImage.image,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        0,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT);
 
     /*
     *  Record draw commands of the forward pass.
@@ -908,11 +919,6 @@ void VulkanEngine::forwardPass(VkCommandBuffer cmd)
     /*
     * Update the descriptors of scene data buffer, textures, and object data buffer.
     */ 
-	// Add scene date buffer to the global descriptor set.
-    SceneData* sceneUniformData = (SceneData*)AllocatedBuffer::mapBuffer(_allocator, getCurrentFrame()._sceneDataBuffer);
-    *sceneUniformData = _sceneData;
-    AllocatedBuffer::unmapBuffer(_allocator, getCurrentFrame()._sceneDataBuffer);
-
     /*
 	*  Add draw commands to the command buffer.
     */
@@ -952,7 +958,6 @@ void VulkanEngine::HZBPass(VkCommandBuffer cmd)
         VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
         VK_IMAGE_ASPECT_COLOR_BIT,
         0, _depthPyramidLevels);
-
 
     for (uint32_t i = 0; i < _depthPyramidLevels; i++)
     {
@@ -1334,6 +1339,20 @@ void VulkanEngine::initSwapchain()
 
     VK_CHECK(vkCreateSampler(_device, &createInfo, 0, &_depthSampler));
 
+    // Create shadowmap sampler.
+    createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    createInfo.magFilter = VK_FILTER_LINEAR;
+    createInfo.minFilter = VK_FILTER_LINEAR;
+    createInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    createInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    createInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    createInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    createInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    createInfo.compareEnable = true;
+    createInfo.compareOp = VK_COMPARE_OP_LESS;
+    vkCreateSampler(_device, &createInfo, nullptr, &_shadowMapSampler);
+
 	/*
     *  Add to deletion queues.
     */
@@ -1348,6 +1367,7 @@ void VulkanEngine::initSwapchain()
 		vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation); 
 
         vkDestroySampler(_device, _depthSampler, nullptr);
+        vkDestroySampler(_device, _shadowMapSampler, nullptr);
         vkDestroyImageView(_device, _depthPyramid.imageView, nullptr);
         vmaDestroyImage(_allocator, _depthPyramid.image, _depthPyramid.allocation);
 	});
@@ -1471,7 +1491,7 @@ void VulkanEngine::initScene()
 
     _mainLight.lightPosition = _mainCamera.position;
     _mainLight.lightDirection = glm::vec3(0.3f, -1.0f, 0.3f);
-    _mainLight.shadowExtent = glm::vec3(100.0f, 100.0f, 100.0f);
+    _mainLight.shadowExtent = glm::vec3(150.0f, 150.0f, 150.0f);
 
     _sceneData.view = view;
 	_sceneData.proj = projection;
@@ -1480,9 +1500,9 @@ void VulkanEngine::initScene()
     _sceneData.sunlightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
     _sceneData.ambientColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 
-    _lightData.view = _mainLight.getViewMatrix();
-    _lightData.proj = _mainLight.getProjectionMatrix();
-    _lightData.viewproj = _lightData.proj * _lightData.view;
+    glm::mat4 lightView = _mainLight.getViewMatrix();
+    glm::mat4 lightProj = _mainLight.getProjectionMatrix();
+    _sceneData.sunlightViewProj = lightProj * lightView;
 
     // Load models.
     std::string structurePath = { "..\\..\\assets\\structure.glb" };
@@ -1495,12 +1515,9 @@ void VulkanEngine::initScene()
         //allocate a new uniform buffer for the scene data
         _frames[i]._sceneDataBuffer = AllocatedBuffer::createBuffer(_allocator, sizeof(SceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-        _frames[i]._sceneLightDataBuffer = AllocatedBuffer::createBuffer(_allocator, sizeof(LightData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
         //add it to the deletion queue of this frame so it gets deleted once its been used
         _mainDeletionQueue.push_function([=, this]() {
             AllocatedBuffer::destroyBuffer(_allocator, _frames[i]._sceneDataBuffer);
-            AllocatedBuffer::destroyBuffer(_allocator, _frames[i]._sceneLightDataBuffer);
             });
     }
 }
@@ -1625,7 +1642,7 @@ void VulkanEngine::initDescriptorPoolsAndLayouts()
     {
         DescriptorLayoutBuilder builder;
         builder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
-        _sceneLightDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        _sceneLightDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT);
     }
     {
         DescriptorLayoutBuilder builder;
@@ -1640,7 +1657,7 @@ void VulkanEngine::initDescriptorPoolsAndLayouts()
     {
         DescriptorLayoutBuilder builder;
         builder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 16);
-        _texturesDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        _texturesDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
     }
     {
         DescriptorLayoutBuilder builder;
@@ -1651,6 +1668,11 @@ void VulkanEngine::initDescriptorPoolsAndLayouts()
         DescriptorLayoutBuilder builder;
         builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
         _instanceObjectIDDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT);
+    }
+    {
+        DescriptorLayoutBuilder builder;
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1);
+        _shadowMapDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
     }
     {
         DescriptorLayoutBuilder builder;
@@ -1684,15 +1706,9 @@ void VulkanEngine::initDescriptors()
     {
         _frames[i]._sceneDataDescriptorSet = _globalDescriptorAllocator.allocate(_device, _sceneDataDescriptorSetLayout);
 
-        _frames[i]._sceneLightDataDescriptorSet = _globalDescriptorAllocator.allocate(_device, _sceneLightDataDescriptorSetLayout);
-
         DescriptorWriter writer;
         writer.addBufferDescriptorSet(0, _frames[i]._sceneDataBuffer.buffer, getCurrentFrame()._sceneDataBuffer.size, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         writer.updateDescriptorSets(_device, _frames[i]._sceneDataDescriptorSet);
-
-        writer.clear();
-        writer.addBufferDescriptorSet(0, _frames[i]._sceneLightDataBuffer.buffer, getCurrentFrame()._sceneLightDataBuffer.size, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-        writer.updateDescriptorSets(_device, _frames[i]._sceneLightDataDescriptorSet);
     }
 
     _texturesDescriptorSet = _globalDescriptorAllocator.allocate(_device, _texturesDescriptorSetLayout);
@@ -1715,7 +1731,14 @@ void VulkanEngine::initDescriptors()
         DescriptorWriter writer;
         writer.addBufferDescriptorSet(0, _renderScene.objectDataBuffer.value().buffer, _renderScene.objectDataBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
         writer.updateDescriptorSets(_device, _objectDataDescriptorSet);
-    }        
+    }    
+
+    _shadowMapDescriptorSet = _globalDescriptorAllocator.allocate(_device, _shadowMapDescriptorSetLayout);
+    {
+        DescriptorWriter writer;
+        writer.addImageDescriptorSet(0, _shadowMap.imageView, _shadowMapSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writer.updateDescriptorSets(_device, _shadowMapDescriptorSet);
+    }
 }
 
 void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
@@ -1744,10 +1767,10 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 
     materialLayout = layoutBuilder.build(engine->getDevice(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
-	VkDescriptorSetLayout layouts[] = { engine->_sceneDataDescriptorSetLayout, engine->_texturesDescriptorSetLayout, engine->_objectDataDescriptorSetLayout, engine->_instanceObjectIDDescriptorSetLayout, materialLayout };
+	VkDescriptorSetLayout layouts[] = { engine->_sceneDataDescriptorSetLayout, engine->_texturesDescriptorSetLayout, engine->_objectDataDescriptorSetLayout, engine->_instanceObjectIDDescriptorSetLayout, materialLayout, engine->_shadowMapDescriptorSetLayout };
 
 	VkPipelineLayoutCreateInfo mesh_layout_info = vkInit::pipelineLayoutCreateInfo();
-	mesh_layout_info.setLayoutCount = 5;
+	mesh_layout_info.setLayoutCount = 6;
 	mesh_layout_info.pSetLayouts = layouts;
 	mesh_layout_info.pPushConstantRanges = &matrixRange;
 	mesh_layout_info.pushConstantRangeCount = 1;

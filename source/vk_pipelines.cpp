@@ -133,7 +133,7 @@ void PipelineBuilder::setVertexDescription()
     colorAttribute.location = 2;
     colorAttribute.format = VK_FORMAT_R32G32B32A32_SFLOAT;
     colorAttribute.offset = offsetof(Vertex, color);
-
+    
 	_vertexInputDescription.attributes.push_back(positionUvxAttribute);
 	_vertexInputDescription.attributes.push_back(normalUvyAttribute);
     _vertexInputDescription.attributes.push_back(colorAttribute);

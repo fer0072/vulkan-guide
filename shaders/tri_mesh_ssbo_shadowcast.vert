@@ -5,12 +5,15 @@ layout (location = 2) in vec4 vColor;
 
 layout (location = 0) out vec3 outColor;
 
-layout(set = 0, binding = 0) uniform  LightData{   
-    mat4 view;
-    mat4 proj;
+layout(set = 0, binding = 0) uniform SceneData{   
+	mat4 view;
+	mat4 proj;
 	mat4 viewproj;
-
-} lightData;
+	mat4 lightViewProj;
+	vec4 ambientColor;
+	vec4 sunlightDirection; //w for sun power
+	vec4 sunlightColor;
+} sceneData;
 
 struct ObjectData{
 	mat4 model;
@@ -33,6 +36,6 @@ void main()
 {	
 	uint objectID = instanceObjectIDBuffer.IDs[gl_InstanceIndex];
 	mat4 modelMatrix = objectBuffer.objects[objectID].model;
-	mat4 transformMatrix = (lightData.viewproj * modelMatrix);
+	mat4 transformMatrix = (sceneData.lightViewProj * modelMatrix);
 	gl_Position = transformMatrix * vec4(vPosition_uvx.xyz, 1.0f);	
 }

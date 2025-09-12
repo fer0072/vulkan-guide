@@ -108,10 +108,8 @@ struct FrameData
     VkCommandPool _commandPool;
     VkCommandBuffer _mainCommandBuffer;
 
-    AllocatedBuffer _sceneLightDataBuffer;
     AllocatedBuffer _sceneDataBuffer;
     VkDescriptorSet _sceneDataDescriptorSet;
-    VkDescriptorSet _sceneLightDataDescriptorSet;
 };
 
 struct EngineStats 
@@ -212,6 +210,7 @@ public:
     VkDescriptorSetLayout _texturesDescriptorSetLayout;
     VkDescriptorSetLayout _objectDataDescriptorSetLayout;
     VkDescriptorSetLayout _instanceObjectIDDescriptorSetLayout;
+    VkDescriptorSetLayout _shadowMapDescriptorSetLayout;
 
     GLTFMetallic_Roughness _metalRoughMaterial;
 
@@ -315,21 +314,19 @@ private:
     
     RenderScene _renderScene;
     SceneData _sceneData;
-    LightData _lightData;
     Camera _mainCamera;
     DirectionalLight _mainLight;
 
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;
 
-    //> HZB resources
     AllocatedImage _depthPyramid;
     VkSampler _depthSampler;
+    VkSampler _shadowMapSampler;
     std::vector<VkImageView> _depthPyramidMips;
     uint32_t _depthPyramidLevels = 0;
     int32_t _depthPyramidWidth = 0;
     int32_t _depthPyramidHeight = 0;
-    //< HZB resources
 
     std::vector<ComputeEffect> _backgroundEffects;
     int _currentBackgroundEffect = 0;
@@ -340,13 +337,12 @@ private:
     VkDescriptorSet _drawImageDescriptors;
 
     VkDescriptorSetLayout _computeCullDataDescriptorSetLayout;
-    VkDescriptorSet _computeCullDataDescriptorSet;
 
+    VkDescriptorSet _shadowMapDescriptorSet;
     VkDescriptorSet _objectDataDescriptorSet;
     VkDescriptorSet _texturesDescriptorSet;
 
     VkDescriptorSetLayout _HZBDescriptorSetLayout;
-    VkDescriptorSet _instanceObjectIDDescriptorSet;
 
     std::vector<VkBufferMemoryBarrier> postCullBarriers;
 

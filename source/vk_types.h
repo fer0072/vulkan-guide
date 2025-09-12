@@ -62,16 +62,11 @@ struct GPUGLTFMaterial {
 
 static_assert(sizeof(GPUGLTFMaterial) == 256);
 
-struct LightData {
-    glm::mat4 view;
-    glm::mat4 proj;
-    glm::mat4 viewproj;
-};
-
 struct SceneData {
     glm::mat4 view;
     glm::mat4 proj;
     glm::mat4 viewproj;
+    glm::mat4 sunlightViewProj;
     glm::vec4 ambientColor;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
