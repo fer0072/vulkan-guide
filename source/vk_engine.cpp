@@ -413,6 +413,24 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
 
     computeCullPass(cmd);
 
+    // transition our main draw image into general layout so we can write into it
+    // we will overwrite it all so we dont care about what was the older layout
+    vkUtils::imageLayoutTransition(cmd, _drawImage.image, 
+        VK_IMAGE_LAYOUT_UNDEFINED, 
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0, 
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
+
+    vkUtils::imageLayoutTransition(cmd, _depthImage.image, 
+        VK_IMAGE_LAYOUT_UNDEFINED, 
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, 
+        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 
+        0, 
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
+
     //shadowPass(cmd);
     
     //Draw the forward pass, including opaque objects and transparent objects.
@@ -481,16 +499,24 @@ void VulkanEngine::draw()
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-	// transition our main draw image into general layout so we can write into it
-	// we will overwrite it all so we dont care about what was the older layout
-	vkUtils::imageLayoutTransition(cmd, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-    vkUtils::imageLayoutTransition(cmd, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-
 	drawMain(cmd);
 
 	//transtion the draw image and the swapchain image into their correct transfer layouts
-	vkUtils::imageLayoutTransition(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	vkUtils::imageLayoutTransition(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	vkUtils::imageLayoutTransition(cmd, _drawImage.image, 
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT, 
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, 
+        VK_ACCESS_2_TRANSFER_READ_BIT);
+
+	vkUtils::imageLayoutTransition(cmd, _swapchainImages[swapchainImageIndex], 
+        VK_IMAGE_LAYOUT_UNDEFINED, 
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT, 
+        0, 
+        VK_ACCESS_2_TRANSFER_WRITE_BIT);
 
 	VkExtent2D extent;
 	extent.height = _windowExtent.height;
@@ -501,13 +527,25 @@ void VulkanEngine::draw()
 	vkUtils::copyImageToImage(cmd, _drawImage.image, _swapchainImages[swapchainImageIndex], _drawExtent,_swapchainExtent);
 
 	// set swapchain image layout to Attachment Optimal so we can draw it
-	vkUtils::imageLayoutTransition(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	vkUtils::imageLayoutTransition(cmd, _swapchainImages[swapchainImageIndex], 
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+        VK_PIPELINE_STAGE_2_TRANSFER_BIT, 
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+        VK_ACCESS_2_TRANSFER_WRITE_BIT, 
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT);
 
 	//draw imgui into the swapchain image
 	drawImgui(cmd, _swapchainImageViews[swapchainImageIndex]);
 
 	// set swapchain image layout to Present so we can draw it
-	vkUtils::imageLayoutTransition(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    vkUtils::imageLayoutTransition(cmd, _swapchainImages[swapchainImageIndex], 
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, 
+        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, 
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, 
+        0);
 
 	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	VK_CHECK(vkEndCommandBuffer(cmd));
@@ -821,17 +859,28 @@ void VulkanEngine::HZBPass(VkCommandBuffer cmd)
 {
     auto start = std::chrono::system_clock::now();
 
-    VkImageMemoryBarrier depthImageReadBarrier = vkInit::imageMemoryBarrier(_depthImage.image,
-        VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-        VK_ACCESS_SHADER_READ_BIT,
-        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, 0, 0, 0, 1, &depthImageReadBarrier);
-
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _HZBEffect.pipeline);
 
-    vkUtils::imageLayoutTransition(cmd, _depthPyramid.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+    vkUtils::imageLayoutTransition(cmd, _depthImage.image, 
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT, 
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, 
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, 
+        VK_ACCESS_2_SHADER_STORAGE_READ_BIT, 
+        VK_IMAGE_ASPECT_DEPTH_BIT,
+        0, 1);
+
+    vkUtils::imageLayoutTransition(cmd, _depthPyramid.image, 
+        VK_IMAGE_LAYOUT_UNDEFINED, 
+        VK_IMAGE_LAYOUT_GENERAL, 
+        VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, 
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        0,  
+        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+        0, _depthPyramidLevels);
+
 
     for (uint32_t i = 0; i < _depthPyramidLevels; i++)
     {
@@ -848,11 +897,10 @@ void VulkanEngine::HZBPass(VkCommandBuffer cmd)
 
         writer.addImageDescriptorSet(1, _depthPyramidMips[i], _depthSampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 
-        _HZBDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _HZBDescriptorSetLayout);
+        VkDescriptorSet descriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _HZBDescriptorSetLayout);
+        writer.updateDescriptorSets(_device, descriptorSet);
 
-        writer.updateDescriptorSets(_device, _HZBDescriptorSet);
-
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _HZBEffect.layout, 0, 1, &_HZBDescriptorSet, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _HZBEffect.layout, 0, 1, &descriptorSet, 0, nullptr);
 
         uint32_t levelWidth = _depthPyramidWidth >> i;
         uint32_t levelHeight = _depthPyramidHeight >> i;
@@ -866,16 +914,18 @@ void VulkanEngine::HZBPass(VkCommandBuffer cmd)
         uint32_t groupCountX = (levelWidth + 32 - 1) / 32;
         uint32_t groupCountY = (levelHeight + 32 - 1) / 32;
         vkCmdDispatch(cmd, groupCountX, groupCountY, 1);
-
-        VkImageMemoryBarrier reduceBarrier = vkInit::imageMemoryBarrier(_depthPyramid.image, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT);
-
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, 0, 0, 0, 1, &reduceBarrier);
     }
 
     // The depth image can only be written in the next frame, until the HZB pass of the current frame finishes using it.
-    VkImageMemoryBarrier depthWriteBarrier = vkInit::imageMemoryBarrier(_depthImage.image, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-    vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, 0, 0, 0, 1, &depthWriteBarrier);
+    vkUtils::imageLayoutTransition(cmd, _depthImage.image,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT,
+        0, 1);
 
     auto end = std::chrono::system_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
@@ -1153,6 +1203,7 @@ void VulkanEngine::initSwapchain()
 
     _depthPyramid = AllocatedImage::createImage(this, pyramidExtent, VK_FORMAT_R32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, true);
 
+    _depthPyramidMips.resize(_depthPyramidLevels);
     // Create depth pyramid image views of each mip level.
     for (uint32_t i = 0; i < _depthPyramidLevels; i++)
     {

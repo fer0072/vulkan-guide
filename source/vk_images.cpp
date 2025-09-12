@@ -7,21 +7,37 @@
 //> transition
 #include <vk_initializers.h>
 
-void vkUtils::imageLayoutTransition(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout)
+void vkUtils::imageLayoutTransition(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout, VkPipelineStageFlags2 srcStageMask, VkPipelineStageFlags2 dstStageMask, VkAccessFlags2 srcAccessMask, VkAccessFlags2 dstAccessMask, VkImageAspectFlags aspectMask, uint32_t baseMiplevel, uint32_t levelCount)
 {
     VkImageMemoryBarrier2 imageBarrier {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
     imageBarrier.pNext = nullptr;
 
-    imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
-    imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+    imageBarrier.srcStageMask = srcStageMask;
+    imageBarrier.srcAccessMask = srcAccessMask;
+    imageBarrier.dstStageMask = dstStageMask;
+    imageBarrier.dstAccessMask = dstAccessMask;
 
     imageBarrier.oldLayout = currentLayout;
     imageBarrier.newLayout = newLayout;
 
-    VkImageAspectFlags aspectMask = (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-    imageBarrier.subresourceRange = vkInit::imageSubresourceRange(aspectMask);
+    if (aspectMask == 0) {
+        if (currentLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL ||
+            currentLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL ||
+            newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL ||
+            newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL ||
+            newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) 
+        {
+            aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        }
+        else {
+            aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        }
+    }
+    imageBarrier.subresourceRange.aspectMask = aspectMask;
+    imageBarrier.subresourceRange.baseMipLevel = baseMiplevel;
+    imageBarrier.subresourceRange.levelCount = levelCount;
+    imageBarrier.subresourceRange.baseArrayLayer = 0;
+    imageBarrier.subresourceRange.layerCount = 1;
     imageBarrier.image = image;
 
     VkDependencyInfo depInfo {};
@@ -137,7 +153,15 @@ void vkUtils::generateImageMipmaps(VkCommandBuffer cmd, VkImage image, VkExtent2
         }
     }
 
-    // transition all mip levels into the final read_only layout
-    imageLayoutTransition(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    vkUtils::imageLayoutTransition(cmd, image, 
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 
+        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 
+        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, 
+        VK_ACCESS_2_MEMORY_WRITE_BIT, 
+        VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT,
+        0,
+        0,
+        mipLevels);
 }
 //< mipgen

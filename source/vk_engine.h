@@ -318,7 +318,7 @@ private:
     //> HZB resources
     AllocatedImage _depthPyramid;
     VkSampler _depthSampler;
-    VkImageView _depthPyramidMips[16] = {};
+    std::vector<VkImageView> _depthPyramidMips;
     uint32_t _depthPyramidLevels = 0;
     int32_t _depthPyramidWidth = 0;
     int32_t _depthPyramidHeight = 0;
@@ -339,7 +339,6 @@ private:
     VkDescriptorSet _texturesDescriptorSet;
 
     VkDescriptorSetLayout _HZBDescriptorSetLayout;
-    VkDescriptorSet _HZBDescriptorSet;
     VkDescriptorSet _instanceObjectIDDescriptorSet;
 
     std::vector<VkBufferMemoryBarrier> postCullBarriers;
