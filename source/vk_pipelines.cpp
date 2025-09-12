@@ -145,11 +145,17 @@ void PipelineBuilder::setShaders(VkShaderModule vertexShader, VkShaderModule fra
 {
     _shaderStages.clear();
 
-    _shaderStages.push_back(
-        vkInit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertexShader));
-
-    _shaderStages.push_back(
-        vkInit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader));
+    if (vertexShader != VK_NULL_HANDLE)
+    {
+        _shaderStages.push_back(
+            vkInit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertexShader));
+    }
+    
+    if (fragmentShader != VK_NULL_HANDLE)
+    {
+        _shaderStages.push_back(
+            vkInit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragmentShader));
+    }
 }
 //< setShaders
 //> set_topo
@@ -227,6 +233,14 @@ void PipelineBuilder::enableBlendingAlphaBlend()
     _colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
 }
 //< alphablend
+
+//> color_disable
+void PipelineBuilder::disableColorAttachement()
+{
+    _renderInfo.colorAttachmentCount = 0;
+    _renderInfo.pColorAttachmentFormats = nullptr;
+}
+//< color_disable
 
 //> set_formats
 void PipelineBuilder::setColorAttachmentFormat(VkFormat format)

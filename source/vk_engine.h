@@ -108,8 +108,10 @@ struct FrameData
     VkCommandPool _commandPool;
     VkCommandBuffer _mainCommandBuffer;
 
+    AllocatedBuffer _sceneLightDataBuffer;
     AllocatedBuffer _sceneDataBuffer;
     VkDescriptorSet _sceneDataDescriptorSet;
+    VkDescriptorSet _sceneLightDataDescriptorSet;
 };
 
 struct EngineStats 
@@ -123,6 +125,7 @@ struct EngineStats
 
 struct GLTFMetallic_Roughness 
 {
+    MaterialPipeline shadowPipeline;
     MaterialPipeline opaquePipeline;
     MaterialPipeline transparentPipeline;
 
@@ -197,13 +200,15 @@ public:
     DeletionQueue _mainDeletionQueue;
 
     //> draw resources
+    AllocatedImage _shadowMap;
     AllocatedImage _drawImage;
-    AllocatedImage _depthImage;
+    AllocatedImage _depthImage;    
 
     std::unordered_map<std::string, std::shared_ptr<AllocatedImage>> _defaultImages;
     std::unordered_map<std::string, std::shared_ptr<VkSampler>> _defaultSamplers;
 
     VkDescriptorSetLayout _sceneDataDescriptorSetLayout;
+    VkDescriptorSetLayout _sceneLightDataDescriptorSetLayout;
     VkDescriptorSetLayout _texturesDescriptorSetLayout;
     VkDescriptorSetLayout _objectDataDescriptorSetLayout;
     VkDescriptorSetLayout _instanceObjectIDDescriptorSetLayout;
@@ -302,13 +307,15 @@ private:
     VkFormat _swapchainImageFormat;
     VkExtent2D _swapchainExtent;
     VkExtent2D _drawExtent;
+    VkExtent2D _shadowMapExtent = {1024, 1024};
     VkDescriptorPool _descriptorPool;
 
     VmaAllocator _allocator; // vma lib allocator
     DescriptorAllocator _globalDescriptorAllocator;
     
     RenderScene _renderScene;
-    GPU_sceneData _sceneData;
+    SceneData _sceneData;
+    LightData _lightData;
     Camera _mainCamera;
     DirectionalLight _mainLight;
 

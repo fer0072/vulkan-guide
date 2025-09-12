@@ -431,10 +431,9 @@ void VulkanEngine::drawMain(VkCommandBuffer cmd)
         0, 
         VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
 
-    //shadowPass(cmd);
+    shadowPass(cmd);
     
-    //Draw the forward pass, including opaque objects and transparent objects.
-    forwardPass(cmd);
+    forwardPass(cmd); //Draw the forward pass, including opaque objects and transparent objects.
 
     HZBPass(cmd);
 }
@@ -459,11 +458,15 @@ void VulkanEngine::updateSceneData()
 
     glm::mat4 projection = _mainCamera.getProjectionMatrix();
 
-    _mainLight.lightPosition = _mainCamera.position;
-
     _sceneData.view = view;
     _sceneData.proj = projection;
     _sceneData.viewproj = projection * view;
+
+    _mainLight.lightPosition = _mainCamera.position;
+
+    _lightData.view = _mainLight.getViewMatrix();
+    _lightData.proj = _mainLight.getProjectionMatrix();
+    _lightData.viewproj = _lightData.proj * _lightData.view;
 }
 
 void VulkanEngine::draw()
@@ -741,7 +744,76 @@ void VulkanEngine::computeCullPass(VkCommandBuffer cmd)
 
 void VulkanEngine::shadowPass(VkCommandBuffer cmd)
 {
+    auto start = std::chrono::system_clock::now();
 
+    /*
+    *  Record draw commands of the shadow pass.
+    */;
+    VkRenderingAttachmentInfo depthAttachment = vkInit::depthAttachmentInfo(_shadowMap.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+    VkRenderingInfo renderInfo = vkInit::renderingInfo(_shadowMapExtent, nullptr, &depthAttachment);
+
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    VkViewport viewport = {};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width = (float)_shadowMapExtent.width;
+    viewport.height = (float)_shadowMapExtent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = {};
+    scissor.offset.x = 0;
+    scissor.offset.y = 0;
+    scissor.extent = _shadowMapExtent;
+
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    // Add scene date buffer to the global descriptor set.
+    LightData* lightUniformData = (LightData*)AllocatedBuffer::mapBuffer(_allocator, getCurrentFrame()._sceneLightDataBuffer);
+    *lightUniformData = _lightData;
+    AllocatedBuffer::unmapBuffer(_allocator, getCurrentFrame()._sceneLightDataBuffer);
+
+    DescriptorWriter writer;
+    writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneLightDataBuffer.buffer, sizeof(LightData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.updateDescriptorSets(_device, getCurrentFrame()._sceneLightDataDescriptorSet);
+
+    RenderScene::MeshPass& meshPass = _renderScene.shadowPass;
+
+    _instanceObjectIDDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _instanceObjectIDDescriptorSetLayout);
+    writer.clear();
+    writer.addBufferDescriptorSet(0, meshPass.culledInstanceObjectIDBuffer.value().buffer, meshPass.culledInstanceObjectIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.updateDescriptorSets(_device, _instanceObjectIDDescriptorSet);
+        
+    if (meshPass.instanceBatches.size() > 0)
+    {
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmd, 0, 1, &_renderScene.mergedVertexBuffer.value().buffer, &offset);
+        vkCmdBindIndexBuffer(cmd, _renderScene.mergedIndexBuffer.value().buffer, 0, VK_INDEX_TYPE_UINT32);
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _metalRoughMaterial.shadowPipeline.pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _metalRoughMaterial.shadowPipeline.layout, 0, 1, &getCurrentFrame()._sceneLightDataDescriptorSet, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _metalRoughMaterial.shadowPipeline.layout, 1, 1, &_objectDataDescriptorSet, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _metalRoughMaterial.shadowPipeline.layout, 2, 1, &_instanceObjectIDDescriptorSet, 0, nullptr);
+
+        for (int i = 0; i < meshPass.indirectBatches.size(); i++)
+        {
+            auto& indirectBatch = meshPass.indirectBatches[i];
+            auto& instanceBatch = meshPass.instanceBatches[indirectBatch.firstInstanceBatch];
+
+            vkCmdDrawIndexedIndirect(cmd, meshPass.drawIndirectBuffer.value().buffer, indirectBatch.firstInstanceBatch * sizeof(VkDrawIndexedIndirectCommand), indirectBatch.count, sizeof(VkDrawIndexedIndirectCommand));
+        }
+    }
+
+    auto end = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    _engineStats.shadowPassTime = elapsed.count() / 1000.f;
+
+    vkCmdEndRendering(cmd);
 }
 
 void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass)
@@ -837,7 +909,7 @@ void VulkanEngine::forwardPass(VkCommandBuffer cmd)
     * Update the descriptors of scene data buffer, textures, and object data buffer.
     */ 
 	// Add scene date buffer to the global descriptor set.
-    GPU_sceneData* sceneUniformData = (GPU_sceneData*)AllocatedBuffer::mapBuffer(_allocator, getCurrentFrame()._sceneDataBuffer);
+    SceneData* sceneUniformData = (SceneData*)AllocatedBuffer::mapBuffer(_allocator, getCurrentFrame()._sceneDataBuffer);
     *sceneUniformData = _sceneData;
     AllocatedBuffer::unmapBuffer(_allocator, getCurrentFrame()._sceneDataBuffer);
 
@@ -1132,6 +1204,31 @@ void VulkanEngine::initSwapchain()
     createSwapchain(_windowExtent.width, _windowExtent.height);
 
     /*
+    *  Create shadow image.
+    */
+
+    // Hardcoding the draw format to 32 bit float
+    _shadowMap.imageFormat = VK_FORMAT_D32_SFLOAT;
+    _shadowMap.imageExtent = { _shadowMapExtent.width, _shadowMapExtent.height, 1 };
+
+    VkImageUsageFlags shadowMapUsages{};
+    shadowMapUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VkImageCreateInfo simg_info = vkInit::imageCreateInfo(_shadowMap.imageFormat, shadowMapUsages, _shadowMap.imageExtent);
+
+    VmaAllocationCreateInfo simg_allocinfo = {};
+    simg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    simg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    // Allocate and create the image
+    vmaCreateImage(_allocator, &simg_info, &simg_allocinfo, &_shadowMap.image, &_shadowMap.allocation, nullptr);
+
+    // Build a image-view for the draw image to use for rendering
+    VkImageViewCreateInfo sview_info = vkInit::imageViewCreateInfo(_shadowMap.imageFormat, _shadowMap.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    VK_CHECK(vkCreateImageView(_device, &sview_info, nullptr, &_shadowMap.imageView));
+
+    /*
     *  Create draw image.
     */
 
@@ -1381,6 +1478,10 @@ void VulkanEngine::initScene()
     _sceneData.sunlightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
     _sceneData.ambientColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 
+    _lightData.view = _mainLight.getViewMatrix();
+    _lightData.proj = _mainLight.getProjectionMatrix();
+    _lightData.viewproj = _lightData.proj * _lightData.view;
+
     // Load models.
     std::string structurePath = { "..\\..\\assets\\structure.glb" };
     auto structureFile = loadGltf(this, structurePath);
@@ -1390,11 +1491,14 @@ void VulkanEngine::initScene()
     // Create global buffers for scene data.
     for (int i = 0; i < FRAME_OVERLAP; i++) {
         //allocate a new uniform buffer for the scene data
-        _frames[i]._sceneDataBuffer = AllocatedBuffer::createBuffer(_allocator, sizeof(GPU_sceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+        _frames[i]._sceneDataBuffer = AllocatedBuffer::createBuffer(_allocator, sizeof(SceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+        _frames[i]._sceneLightDataBuffer = AllocatedBuffer::createBuffer(_allocator, sizeof(LightData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
         //add it to the deletion queue of this frame so it gets deleted once its been used
         _mainDeletionQueue.push_function([=, this]() {
             AllocatedBuffer::destroyBuffer(_allocator, _frames[i]._sceneDataBuffer);
+            AllocatedBuffer::destroyBuffer(_allocator, _frames[i]._sceneLightDataBuffer);
             });
     }
 }
@@ -1518,6 +1622,11 @@ void VulkanEngine::initDescriptorPoolsAndLayouts()
     }
     {
         DescriptorLayoutBuilder builder;
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
+        _sceneLightDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+    {
+        DescriptorLayoutBuilder builder;
         builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1);
         _drawImageDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
     }
@@ -1550,6 +1659,7 @@ void VulkanEngine::initDescriptorPoolsAndLayouts()
 
     _mainDeletionQueue.push_function([&]() {
         vkDestroyDescriptorSetLayout(_device, _computeCullDataDescriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _sceneLightDataDescriptorSetLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _sceneDataDescriptorSetLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _texturesDescriptorSetLayout, nullptr);
@@ -1572,9 +1682,15 @@ void VulkanEngine::initDescriptors()
     {
         _frames[i]._sceneDataDescriptorSet = _globalDescriptorAllocator.allocate(_device, _sceneDataDescriptorSetLayout);
 
+        _frames[i]._sceneLightDataDescriptorSet = _globalDescriptorAllocator.allocate(_device, _sceneLightDataDescriptorSetLayout);
+
         DescriptorWriter writer;
         writer.addBufferDescriptorSet(0, _frames[i]._sceneDataBuffer.buffer, getCurrentFrame()._sceneDataBuffer.size, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
         writer.updateDescriptorSets(_device, _frames[i]._sceneDataDescriptorSet);
+
+        writer.clear();
+        writer.addBufferDescriptorSet(0, _frames[i]._sceneLightDataBuffer.buffer, getCurrentFrame()._sceneLightDataBuffer.size, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        writer.updateDescriptorSets(_device, _frames[i]._sceneLightDataDescriptorSet);
     }
 
     _texturesDescriptorSet = _globalDescriptorAllocator.allocate(_device, _texturesDescriptorSetLayout);
@@ -1611,6 +1727,10 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	if (!vkUtils::loadShaderModule("../../shaders/tri_mesh_ssbo.vert.spv", engine->getDevice(), &meshVertexShader)) {
 		fmt::println("Error when building the triangle vertex shader module");
 	}
+
+    /*
+    *  Create forward opaque and transparent pipelines.
+    */
 
 	VkPushConstantRange matrixRange{};
 	matrixRange.offset = 0;
@@ -1672,14 +1792,66 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 	pipelineBuilder.enableDepthTest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
 	transparentPipeline.pipeline = pipelineBuilder.buildPipeline(engine->getDevice());
+
+    /*
+    *  Create shadow pipeline.
+    */
+    VkShaderModule shadowVertexShader;
+    if (!vkUtils::loadShaderModule("../../shaders/tri_mesh_ssbo_shadowcast.vert.spv", engine->getDevice(), &shadowVertexShader)) {
+        fmt::println("Error when building the triangle vertex shader module");
+    }
+
+    VkDescriptorSetLayout shadowLayouts[] = { engine->_sceneLightDataDescriptorSetLayout, engine->_objectDataDescriptorSetLayout, engine->_instanceObjectIDDescriptorSetLayout };
+
+    VkPipelineLayoutCreateInfo shadowLayoutInfo = vkInit::pipelineLayoutCreateInfo();
+    shadowLayoutInfo.setLayoutCount = 3;
+    shadowLayoutInfo.pSetLayouts = shadowLayouts;
+
+    VkPipelineLayout shadowLayout;
+    VK_CHECK(vkCreatePipelineLayout(engine->getDevice(), &shadowLayoutInfo, nullptr, &shadowLayout));
+
+    shadowPipeline.layout = shadowLayout;
+
+    // build the stage-create-info for both vertex and fragment stages. This lets
+    // the pipeline know the shader modules per stage
+    PipelineBuilder shadowPipelineBuilder;
+
+    shadowPipelineBuilder.setShaders(shadowVertexShader, VK_NULL_HANDLE);
+
+    shadowPipelineBuilder.setInputTopology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+
+    shadowPipelineBuilder.setPolygonMode(VK_POLYGON_MODE_FILL);
+
+    shadowPipelineBuilder.setCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+
+    shadowPipelineBuilder.disableMultisampling();
+
+    shadowPipelineBuilder.disableBlending();
+
+    shadowPipelineBuilder.enableDepthTest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
+
+    //render format
+    shadowPipelineBuilder.disableColorAttachement();
+    shadowPipelineBuilder.setDepthAttachmentFormat(engine->_shadowMap.imageFormat);
+
+    shadowPipelineBuilder.setVertexDescription();
+
+    // use the triangle layout we created
+    shadowPipelineBuilder._pipelineLayout = shadowLayout;
+
+    // finally build the pipeline
+    shadowPipeline.pipeline = shadowPipelineBuilder.buildPipeline(engine->getDevice());
 	
 	vkDestroyShaderModule(engine->getDevice(), meshFragShader, nullptr);
 	vkDestroyShaderModule(engine->getDevice(), meshVertexShader, nullptr);
+    vkDestroyShaderModule(engine->getDevice(), shadowVertexShader, nullptr);
 
     engine->_mainDeletionQueue.push_function([=]() {
+        vkDestroyPipeline(engine->getDevice(), shadowPipeline.pipeline, nullptr);
         vkDestroyPipeline(engine->getDevice(), opaquePipeline.pipeline, nullptr);
         vkDestroyPipeline(engine->getDevice(), transparentPipeline.pipeline, nullptr);
         vkDestroyPipelineLayout(engine->getDevice(), newLayout, nullptr);
+        vkDestroyPipelineLayout(engine->getDevice(), shadowPipeline.layout, nullptr);
         vkDestroyDescriptorSetLayout(engine->getDevice(), materialLayout, nullptr);
 		});
 }

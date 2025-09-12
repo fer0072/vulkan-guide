@@ -379,7 +379,8 @@ void RenderScene::buildPassBatches(MeshPass* pass)
 				RenderObject* renderObject = getRenderObject(passObject->objectID);
 				RenderScene::InstanceBatch& lastInstanceBatch = pass->instanceBatches.back();
 
-				bool isSameMaterial = *renderObject->material.get() == *lastInstanceBatch.getMaterial();
+				bool isSameMaterial = pass->passType == MaterialPass::shadow ? true : *renderObject->material.get() == *lastInstanceBatch.getMaterial();
+
 				bool isSameMesh = getMesh(renderObject->meshID)->meshAsset == getMesh(lastInstanceBatch.meshID)->meshAsset;
 
 				if (isSameMaterial && isSameMesh)
@@ -416,7 +417,7 @@ void RenderScene::buildPassBatches(MeshPass* pass)
 			InstanceBatch nextInstanceBatch = pass->instanceBatches[i];
 
 			bool isMeshCompatible = getMesh(lastInstanceBatch.meshID)->isMerged && getMesh(nextInstanceBatch.meshID)->isMerged;
-			bool isSameMat = *lastInstanceBatch.getMaterial() == *nextInstanceBatch.getMaterial();
+			bool isSameMat = pass->passType == MaterialPass::shadow ? true : *lastInstanceBatch.getMaterial() == *nextInstanceBatch.getMaterial();
 
 			if (isSameMat && isMeshCompatible)
 			{

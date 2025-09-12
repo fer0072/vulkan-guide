@@ -202,8 +202,16 @@ VkRenderingInfo vkInit::renderingInfo(VkExtent2D renderExtent, VkRenderingAttach
 
     renderInfo.renderArea = VkRect2D { VkOffset2D { 0, 0 }, renderExtent };
     renderInfo.layerCount = 1;
-    renderInfo.colorAttachmentCount = 1;
-    renderInfo.pColorAttachments = colorAttachment;
+    if (colorAttachment != nullptr)
+    {
+        renderInfo.colorAttachmentCount = 1;
+        renderInfo.pColorAttachments = colorAttachment;
+    }
+    else
+    {
+        renderInfo.colorAttachmentCount = 0;
+        renderInfo.pColorAttachments = nullptr;
+    }
     renderInfo.pDepthAttachment = depthAttachment;
     renderInfo.pStencilAttachment = nullptr;
 

@@ -41,6 +41,7 @@ public:
     void enableBlendingAlphaBlend();
 
     void setColorAttachmentFormat(VkFormat format);
+    void disableColorAttachement();
 	void setDepthAttachmentFormat(VkFormat format);
 	void disableDepthTest();
     void enableDepthTest(bool depthWriteEnable,VkCompareOp op);
