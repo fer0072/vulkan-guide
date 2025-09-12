@@ -77,7 +77,7 @@ void VulkanEngine::init()
 
     initSyncStructures();
 
-    initDescriptors();
+    initDescriptorPoolsAndLayouts();
 
     initPipelines();
 
@@ -92,6 +92,10 @@ void VulkanEngine::init()
     _renderScene.mergeMeshes(this);
 
     _renderScene.buildBatches();
+
+    _renderScene.createPassBuffers(this);
+
+    initDescriptors();
 
     // everything went fine
     _isInitialized = true;
@@ -276,11 +280,13 @@ void VulkanEngine::initBackgroundEffects()
 
 void VulkanEngine::initComputeCullEffect()
 {
+    VkDescriptorSetLayout layouts[] = { _objectDataDescriptorSetLayout, _sceneDataDescriptorSetLayout, _computeCullDataDescriptorSetLayout};
+
     VkPipelineLayoutCreateInfo computeLayout{};
     computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     computeLayout.pNext = nullptr;
-    computeLayout.pSetLayouts = &_computeCullDataDescriptorSetLayout;
-    computeLayout.setLayoutCount = 1;
+    computeLayout.pSetLayouts = layouts;
+    computeLayout.setLayoutCount = 3;
 
     VkPushConstantRange pushConstant{};
     pushConstant.offset = 0;
@@ -597,17 +603,14 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
     _computeCullDataDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _computeCullDataDescriptorSetLayout);
 
     DescriptorWriter writer;
-    writer.addBufferDescriptorSet(0, _renderScene.objectDataBuffer.value().buffer, _renderScene.objectDataBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-    writer.addBufferDescriptorSet(1, meshPass.drawIndirectBuffer.value().buffer, meshPass.drawIndirectBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.addBufferDescriptorSet(0, meshPass.drawIndirectBuffer.value().buffer, meshPass.drawIndirectBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-    writer.addBufferDescriptorSet(2, meshPass.instanceIDBuffer.value().buffer, meshPass.instanceIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.addBufferDescriptorSet(1, meshPass.instanceIDBuffer.value().buffer, meshPass.instanceIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-    writer.addBufferDescriptorSet(3, meshPass.culledInstanceObjectIDBuffer.value().buffer, meshPass.culledInstanceObjectIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.addBufferDescriptorSet(2, meshPass.culledInstanceObjectIDBuffer.value().buffer, meshPass.culledInstanceObjectIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 
-    writer.addImageDescriptorSet(4, _depthPyramid.imageView, _depthSampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-
-    writer.addBufferDescriptorSet(5, getCurrentFrame()._sceneDataBuffer.buffer, getCurrentFrame()._sceneDataBuffer.size, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    writer.addImageDescriptorSet(3, _depthPyramid.imageView, _depthSampler, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
     writer.updateDescriptorSets(_device, _computeCullDataDescriptorSet);
 
@@ -638,7 +641,9 @@ void VulkanEngine::generateComputeCullCommands(VkCommandBuffer cmd, RenderScene:
 
     vkCmdPushConstants(cmd, _computeCullEffect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(DrawCullData), &cullData);
 
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 0, 1, &_computeCullDataDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 0, 1, &_objectDataDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 1, 1, &getCurrentFrame()._sceneDataDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _computeCullEffect.layout, 2, 1, &_computeCullDataDescriptorSet, 0, nullptr);
 
     vkCmdDispatch(cmd, static_cast<uint32_t>((meshPass.flatBatches.size() / 256) + 1), 1, 1);
 
@@ -703,6 +708,12 @@ void VulkanEngine::shadowPass(VkCommandBuffer cmd)
 
 void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPass& meshPass)
 {
+    _instanceObjectIDDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _instanceObjectIDDescriptorSetLayout);
+
+    DescriptorWriter writer;
+    writer.addBufferDescriptorSet(0, meshPass.culledInstanceObjectIDBuffer.value().buffer, meshPass.culledInstanceObjectIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    writer.updateDescriptorSets(_device, _instanceObjectIDDescriptorSet);
+
     if (meshPass.instanceBatches.size() > 0)
     {
         DrawMesh* lastMesh = nullptr;
@@ -732,14 +743,16 @@ void VulkanEngine::generateDrawCommands(VkCommandBuffer cmd, RenderScene::MeshPa
             if (lastLayout != newLayout)
             {
                 lastLayout = newLayout;
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 0, 1, &_globalDescriptorSet, 0, nullptr);
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 1, 1, &_objectDataDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 0, 1, &getCurrentFrame()._sceneDataDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 1, 1, &_texturesDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 2, 1, &_objectDataDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 3, 1, &_instanceObjectIDDescriptorSet, 0, nullptr);
             }
 
             if (lastDescriptorSet != newDescriptorSet)
             {
                 lastDescriptorSet = newDescriptorSet;
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 2, 1, &newDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, newLayout, 4, 1, &newDescriptorSet, 0, nullptr);
             }
             
             vkCmdDrawIndexedIndirect(cmd, meshPass.drawIndirectBuffer.value().buffer, indirectBatch.firstInstanceBatch * sizeof(VkDrawIndexedIndirectCommand), indirectBatch.count, sizeof(VkDrawIndexedIndirectCommand));
@@ -785,43 +798,10 @@ void VulkanEngine::forwardPass(VkCommandBuffer cmd)
     /*
     * Update the descriptors of scene data buffer, textures, and object data buffer.
     */ 
-    VkDescriptorSetVariableDescriptorCountAllocateInfo allocArrayInfo{ .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO, .pNext = nullptr };
-    uint32_t descriptorCounts = uint32_t(_texCache.cache.size()); // texture array and scene data buffer.
-    allocArrayInfo.pDescriptorCounts = &descriptorCounts;
-    allocArrayInfo.descriptorSetCount = 1;
-    _globalDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _globalDescriptorSetLayout, &allocArrayInfo);
-
 	// Add scene date buffer to the global descriptor set.
     GPU_sceneData* sceneUniformData = (GPU_sceneData*)AllocatedBuffer::mapBuffer(_allocator, getCurrentFrame()._sceneDataBuffer);
     *sceneUniformData = _sceneData;
     AllocatedBuffer::unmapBuffer(_allocator, getCurrentFrame()._sceneDataBuffer);
-
-    DescriptorWriter writer;
-    writer.addBufferDescriptorSet(0, getCurrentFrame()._sceneDataBuffer.buffer, sizeof(GPU_sceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-
-	// Add texture array to the global descriptor set.
-    if (_texCache.cache.size() > 0) {
-        VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-        arraySet.descriptorCount = uint32_t(_texCache.cache.size());
-        arraySet.dstArrayElement = 0;
-        arraySet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        arraySet.dstBinding = 1;
-        arraySet.pImageInfo = _texCache.cache.data();
-        writer.writes.push_back(arraySet);
-    }
-
-    writer.updateDescriptorSets(_device, _globalDescriptorSet);
-
-	// Add object data buffer to the global descriptor set.
-    _objectDataDescriptorSet = getCurrentFrame()._frameDescriptors.allocate(_device, _objectDataDescriptorSetLayout);
-
-    writer.clear();
-
-    writer.addBufferDescriptorSet(0, _renderScene.objectDataBuffer.value().buffer, _renderScene.objectDataBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-
-    writer.addBufferDescriptorSet(1, _renderScene.forwardOpaquePass.culledInstanceObjectIDBuffer.value().buffer, _renderScene.forwardOpaquePass.culledInstanceObjectIDBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-
-    writer.updateDescriptorSets(_device, _objectDataDescriptorSet);
 
     /*
 	*  Add draw commands to the command buffer.
@@ -886,7 +866,6 @@ void VulkanEngine::HZBPass(VkCommandBuffer cmd)
         uint32_t groupCountX = (levelWidth + 32 - 1) / 32;
         uint32_t groupCountY = (levelHeight + 32 - 1) / 32;
         vkCmdDispatch(cmd, groupCountX, groupCountY, 1);
-
 
         VkImageMemoryBarrier reduceBarrier = vkInit::imageMemoryBarrier(_depthPyramid.image, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT);
 
@@ -1351,8 +1330,6 @@ void VulkanEngine::initScene()
     _sceneData.sunlightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
     _sceneData.ambientColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 
-    
-
     // Load models.
     std::string structurePath = { "..\\..\\assets\\structure.glb" };
     auto structureFile = loadGltf(this, structurePath);
@@ -1446,22 +1423,48 @@ void VulkanEngine::initPipelines()
     _metalRoughMaterial.buildPipelines(this);
 }
 
-void VulkanEngine::initDescriptors()
+void VulkanEngine::initDescriptorPoolsAndLayouts()
 {
-    // create a descriptor pool
+    /*
+    *  Create descriptor pools.
+    */
     std::vector<DescriptorAllocator::PoolSizeRatio> sizes = {
         { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
     };
 
     _globalDescriptorAllocator.initPool(_device, 10, sizes);
     _mainDeletionQueue.push_function(
         [&]() { vkDestroyDescriptorPool(_device, _globalDescriptorAllocator.pool, nullptr); });
 
+    for (int i = 0; i < FRAME_OVERLAP; i++) {
+        std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frame_sizes = {
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+        };
+
+        _frames[i]._frameDescriptors = DescriptorAllocatorGrowable{};
+        _frames[i]._frameDescriptors.init(_device, 1000, frame_sizes);
+        _mainDeletionQueue.push_function([&, i]() {
+            _frames[i]._frameDescriptors.destroyPools(_device);
+            });
+    }
+
     /*
     *  Create descriptor set layouts.
     */
+    {
+        DescriptorLayoutBuilder builder;
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
+        builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
+        builder.addBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
+        builder.addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1);
+        _computeCullDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
+    }
     {
         DescriptorLayoutBuilder builder;
         builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1);
@@ -1469,33 +1472,23 @@ void VulkanEngine::initDescriptors()
     }
     {
         DescriptorLayoutBuilder builder;
-        builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
-        builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
-        builder.addBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
-        builder.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
-        builder.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1);
-        builder.addBinding(5, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
-        _computeCullDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
-    }
-    {
-        DescriptorLayoutBuilder builder;
         builder.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1);
-        builder.addBinding(1,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4048);
-               
-        VkDescriptorSetLayoutBindingFlagsCreateInfo bindFlags = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, .pNext = nullptr};
-
-        std::array<VkDescriptorBindingFlags,2> flagArray { 0,VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT |VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT  };
-        
-        bindFlags.bindingCount = 2;
-        bindFlags.pBindingFlags = flagArray.data();
-
-        _globalDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, &bindFlags);
+        _sceneDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT);
+    }
+    {
+        DescriptorLayoutBuilder builder;
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 16);
+        _texturesDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
     }
     {
         DescriptorLayoutBuilder builder;
         builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
-        builder.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
-        _objectDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT);
+        _objectDataDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT);
+    }
+    {
+        DescriptorLayoutBuilder builder;
+        builder.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1);
+        _instanceObjectIDDescriptorSetLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT);
     }
     {
         DescriptorLayoutBuilder builder;
@@ -1505,35 +1498,55 @@ void VulkanEngine::initDescriptors()
     }
 
     _mainDeletionQueue.push_function([&]() {
-        vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _computeCullDataDescriptorSetLayout, nullptr);
-        vkDestroyDescriptorSetLayout(_device, _globalDescriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _sceneDataDescriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _texturesDescriptorSetLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _objectDataDescriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _instanceObjectIDDescriptorSetLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _HZBDescriptorSetLayout, nullptr);
     });
+}
 
+void VulkanEngine::initDescriptors()
+{
     _drawImageDescriptors = _globalDescriptorAllocator.allocate(_device, _drawImageDescriptorLayout);
     {
-        DescriptorWriter writer;	
-		writer.addImageDescriptorSet(0, _drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        DescriptorWriter writer;
+        writer.addImageDescriptorSet(0, _drawImage.imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
         writer.updateDescriptorSets(_device, _drawImageDescriptors);
     }
+    
+    for (int i = 0; i < FRAME_OVERLAP; i++)
+    {
+        _frames[i]._sceneDataDescriptorSet = _globalDescriptorAllocator.allocate(_device, _sceneDataDescriptorSetLayout);
 
-	for (int i = 0; i < FRAME_OVERLAP; i++) {
-		// create a descriptor pool
-		std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frame_sizes = {
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
-		};
+        DescriptorWriter writer;
+        writer.addBufferDescriptorSet(0, _frames[i]._sceneDataBuffer.buffer, getCurrentFrame()._sceneDataBuffer.size, 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        writer.updateDescriptorSets(_device, _frames[i]._sceneDataDescriptorSet);
+    }
 
-		_frames[i]._frameDescriptors = DescriptorAllocatorGrowable{};
-		_frames[i]._frameDescriptors.init(_device, 1000, frame_sizes);
-		_mainDeletionQueue.push_function([&, i]() {
-			_frames[i]._frameDescriptors.destroyPools(_device);
-		});
-	}
+    _texturesDescriptorSet = _globalDescriptorAllocator.allocate(_device, _texturesDescriptorSetLayout);
+    {
+        DescriptorWriter writer;
+        if (_texCache.cache.size() > 0) {
+            VkWriteDescriptorSet arraySet{ .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+            arraySet.descriptorCount = uint32_t(_texCache.cache.size());
+            arraySet.dstArrayElement = 0;
+            arraySet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            arraySet.dstBinding = 0;
+            arraySet.pImageInfo = _texCache.cache.data();
+            writer.writes.push_back(arraySet);
+        }
+        writer.updateDescriptorSets(_device, _texturesDescriptorSet);
+    }
+
+    _objectDataDescriptorSet = _globalDescriptorAllocator.allocate(_device, _objectDataDescriptorSetLayout);
+    {
+        DescriptorWriter writer;
+        writer.addBufferDescriptorSet(0, _renderScene.objectDataBuffer.value().buffer, _renderScene.objectDataBuffer.value().size, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        writer.updateDescriptorSets(_device, _objectDataDescriptorSet);
+    }        
 }
 
 void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
@@ -1558,10 +1571,10 @@ void GLTFMetallic_Roughness::buildPipelines(VulkanEngine* engine)
 
     materialLayout = layoutBuilder.build(engine->getDevice(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
-	VkDescriptorSetLayout layouts[] = { engine->_globalDescriptorSetLayout, engine->_objectDataDescriptorSetLayout, materialLayout };
+	VkDescriptorSetLayout layouts[] = { engine->_sceneDataDescriptorSetLayout, engine->_texturesDescriptorSetLayout, engine->_objectDataDescriptorSetLayout, engine->_instanceObjectIDDescriptorSetLayout, materialLayout };
 
 	VkPipelineLayoutCreateInfo mesh_layout_info = vkInit::pipelineLayoutCreateInfo();
-	mesh_layout_info.setLayoutCount = 3;
+	mesh_layout_info.setLayoutCount = 5;
 	mesh_layout_info.pSetLayouts = layouts;
 	mesh_layout_info.pPushConstantRanges = &matrixRange;
 	mesh_layout_info.pushConstantRangeCount = 1;

@@ -21,7 +21,7 @@ layout(set = 0, binding = 0) uniform SceneData{
 	vec4 sunlightColor;
 } sceneData;
 
-layout(set = 0, binding = 1) uniform sampler2D allTextures[];
+layout(set = 1, binding = 0) uniform sampler2D allTextures[];
 
 struct ObjectData{
 	mat4 model;
@@ -29,18 +29,18 @@ struct ObjectData{
 }; 
 
 //all object matrices
-layout(std140,set = 1, binding = 0) readonly buffer ObjectDataBuffer{   
+layout(std140,set = 2, binding = 0) readonly buffer ObjectDataBuffer{   
 
 	ObjectData objects[];
 } objectDataBuffer;
 
 //all object indices
-layout(set = 1, binding = 1) readonly buffer InstanceObjectIDBuffer{   
+layout(set = 3, binding = 0) readonly buffer InstanceObjectIDBuffer{   
 
 	uint IDs[];
 } instanceObjectIDBuffer;
 
-layout(set = 2, binding = 0) uniform GLTFMaterialData{   
+layout(set = 4, binding = 0) uniform GLTFMaterialData{   
 
 	vec4 colorFactors;
 	vec4 metal_rough_factors;

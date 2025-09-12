@@ -136,7 +136,7 @@ public:
 
 public:
 
-    void prepareComputeCullData(VkCommandBuffer cmd, VulkanEngine* engine);
+    void createPassBuffers(VulkanEngine* engine);
 
     void preparePassData(VkCommandBuffer cmd, VulkanEngine* engine);
 
@@ -156,6 +156,8 @@ private:
     std::vector<VkBufferMemoryBarrier> cullReadyBarriers;
     std::vector<VkBufferMemoryBarrier> uploadBarriers;
 
+    MeshPass* meshPasses[3] = { &shadowPass, &forwardOpaquePass, &forwardTransparentPass };
+
 private:
 
     void buildPassBatches(MeshPass* pass);
@@ -165,8 +167,6 @@ private:
     DrawMesh* getMesh(Handle<DrawMesh> meshID);
 
 	void uploadObjectData(VkCommandBuffer cmd, VulkanEngine* engine);
-
-    void createPassBuffers(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass* meshPass);
 
     void uploadPassData(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass* meshPass);
 };

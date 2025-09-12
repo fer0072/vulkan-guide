@@ -13,9 +13,9 @@ layout(set = 0, binding = 0) uniform  SceneData{
 	vec4 sunlightColor;
 } sceneData;
 
-layout(set = 0, binding = 1) uniform sampler2D allTextures[];
+layout(set = 1, binding = 0) uniform sampler2D allTextures[];
 
-layout(set = 2, binding = 0) uniform GLTFMaterialData{   
+layout(set = 4, binding = 0) uniform GLTFMaterialData{   
 
 	vec4 colorFactors;
 	vec4 metal_rough_factors;

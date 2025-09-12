@@ -8,14 +8,6 @@ void RenderScene::uploadObjectData(VkCommandBuffer cmd, VulkanEngine* engine)
 {
 	// Upload object data to GPU.
 	size_t copySize = allRenderObjects.size() * sizeof(GPUObjectData);
-	if (!objectDataBuffer.has_value() || objectDataBuffer.value().size < copySize)
-	{
-		objectDataBuffer = AllocatedBuffer::createBuffer(engine->getAllocator(), copySize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-		engine->_mainDeletionQueue.push_function([=]() {
-			AllocatedBuffer::destroyBuffer(engine->getAllocator(), objectDataBuffer.value());
-			});
-	}
 
 	AllocatedBuffer newBuffer = AllocatedBuffer::createBuffer(engine->getAllocator(), copySize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
@@ -50,28 +42,42 @@ void RenderScene::uploadObjectData(VkCommandBuffer cmd, VulkanEngine* engine)
 	uploadBarriers.emplace_back(barrier);
 }
 
-void RenderScene::createPassBuffers(VkCommandBuffer cmd, VulkanEngine* engine, MeshPass* meshPass)
+void RenderScene::createPassBuffers(VulkanEngine* engine)
 {
-	/*
-		*  Create buffers used as output buffers of compute cull pass, and input buffers of shadow pass
-		*  and forward pass.
-		*/
-	if (!meshPass->drawIndirectBuffer.has_value() || meshPass->drawIndirectBuffer.value().size < meshPass->instanceBatches.size() * sizeof(VkDrawIndexedIndirectCommand))
+	uint32_t bufferSize = allRenderObjects.size() * sizeof(GPUObjectData);
+	if (!objectDataBuffer.has_value() || objectDataBuffer.value().size < bufferSize)
 	{
-		meshPass->drawIndirectBuffer = AllocatedBuffer::createBuffer(engine->getAllocator(), meshPass->instanceBatches.size() * sizeof(VkDrawIndexedIndirectCommand), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+		objectDataBuffer = AllocatedBuffer::createBuffer(engine->getAllocator(), bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 		engine->_mainDeletionQueue.push_function([=]() {
-			AllocatedBuffer::destroyBuffer(engine->getAllocator(), meshPass->drawIndirectBuffer.value());
+			AllocatedBuffer::destroyBuffer(engine->getAllocator(), objectDataBuffer.value());
 			});
 	}
 
-	if (!meshPass->culledInstanceObjectIDBuffer.has_value() || meshPass->culledInstanceObjectIDBuffer.value().size < meshPass->flatBatches.size() * sizeof(uint32_t))
+	for (int i = 0; i < 3; i++)
 	{
-		meshPass->culledInstanceObjectIDBuffer = AllocatedBuffer::createBuffer(engine->getAllocator(), meshPass->flatBatches.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+		MeshPass* meshPass = meshPasses[i];
+		/*
+			*  Create buffers used as output buffers of compute cull pass, and input buffers of shadow pass
+			*  and forward pass.
+			*/
+		if (!meshPass->drawIndirectBuffer.has_value() || meshPass->drawIndirectBuffer.value().size < meshPass->instanceBatches.size() * sizeof(VkDrawIndexedIndirectCommand))
+		{
+			meshPass->drawIndirectBuffer = AllocatedBuffer::createBuffer(engine->getAllocator(), meshPass->instanceBatches.size() * sizeof(VkDrawIndexedIndirectCommand), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
-		engine->_mainDeletionQueue.push_function([=]() {
-			AllocatedBuffer::destroyBuffer(engine->getAllocator(), meshPass->culledInstanceObjectIDBuffer.value());
-			});
+			engine->_mainDeletionQueue.push_function([=]() {
+				AllocatedBuffer::destroyBuffer(engine->getAllocator(), meshPass->drawIndirectBuffer.value());
+				});
+		}
+
+		if (!meshPass->culledInstanceObjectIDBuffer.has_value() || meshPass->culledInstanceObjectIDBuffer.value().size < meshPass->flatBatches.size() * sizeof(uint32_t))
+		{
+			meshPass->culledInstanceObjectIDBuffer = AllocatedBuffer::createBuffer(engine->getAllocator(), meshPass->flatBatches.size() * sizeof(uint32_t), VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
+
+			engine->_mainDeletionQueue.push_function([=]() {
+				AllocatedBuffer::destroyBuffer(engine->getAllocator(), meshPass->culledInstanceObjectIDBuffer.value());
+				});
+		}
 	}
 }
 
@@ -160,12 +166,10 @@ void RenderScene::preparePassData(VkCommandBuffer cmd, VulkanEngine* engine)
 	// Upload object data to GPU.
 	uploadObjectData(cmd, engine);
 	
-	MeshPass* meshPasses[3] = { &shadowPass, &forwardOpaquePass, &forwardTransparentPass };
 	for (int i = 0; i < 3; i++)
 	{
 		MeshPass* meshPass = meshPasses[i];
 
-		createPassBuffers(cmd, engine, meshPass);
 		uploadPassData(cmd, engine, meshPass);
 	}
 

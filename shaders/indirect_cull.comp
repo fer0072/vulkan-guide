@@ -27,10 +27,19 @@ struct ObjectData{
 }; 
 
 // Object data buffer.
-layout(std140,set = 0, binding = 0) buffer ObjectDataBuffer{   
+layout(std140,set = 0, binding = 0) readonly buffer ObjectDataBuffer{   
 
 	ObjectData objects[];
 } objectDataBuffer;
+
+layout(set = 1, binding = 0) uniform SceneData{   
+    mat4 view;
+	mat4 proj;
+	mat4 viewproj;
+	vec4 ambientColor;
+	vec4 sunlightDirection; //w for sun power
+	vec4 sunlightColor;
+} sceneData;
 
 struct DrawCommand
 {
@@ -42,7 +51,7 @@ struct DrawCommand
 };
 
 // Draw indirect buffer
-layout(set = 0, binding = 1)  buffer DrawIndirectBuffer{   
+layout(set = 2, binding = 0)  buffer DrawIndirectBuffer{   
 
 	DrawCommand Draws[];
 } drawIndirectBuffer;
@@ -52,27 +61,18 @@ struct InstanceIDs {
 	uint batchID;
 };
 
-layout(set = 0, binding = 2) readonly buffer InstanceIDBuffer{   
+layout(set = 2, binding = 1) readonly buffer InstanceIDBuffer{   
 
 	InstanceIDs Instances[];
 } instanceIDBuffer;
 
 
-layout(set = 0, binding = 3)  buffer FinalInstanceObjectIDBuffer{   
+layout(set = 2, binding = 2)  buffer FinalInstanceObjectIDBuffer{   
 
 	uint IDs[];
 } finalInstanceObjectIDBuffer;
 
-layout(set = 0,binding = 4) uniform sampler2D depthPyramid;
-
-layout(set = 0, binding = 5) uniform  SceneData{   
-    mat4 view;
-	mat4 proj;
-	mat4 viewproj;
-	vec4 ambientColor;
-	vec4 sunlightDirection; //w for sun power
-	vec4 sunlightColor;
-} sceneData;
+layout(set = 2,binding = 3) uniform sampler2D depthPyramid;
 
 bool frustumCull(vec3 center_view, float radius_world)
 {

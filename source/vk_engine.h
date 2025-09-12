@@ -109,6 +109,7 @@ struct FrameData
     VkCommandBuffer _mainCommandBuffer;
 
     AllocatedBuffer _sceneDataBuffer;
+    VkDescriptorSet _sceneDataDescriptorSet;
 };
 
 struct EngineStats 
@@ -202,8 +203,10 @@ public:
     std::unordered_map<std::string, std::shared_ptr<AllocatedImage>> _defaultImages;
     std::unordered_map<std::string, std::shared_ptr<VkSampler>> _defaultSamplers;
 
-    VkDescriptorSetLayout _globalDescriptorSetLayout;
+    VkDescriptorSetLayout _sceneDataDescriptorSetLayout;
+    VkDescriptorSetLayout _texturesDescriptorSetLayout;
     VkDescriptorSetLayout _objectDataDescriptorSetLayout;
+    VkDescriptorSetLayout _instanceObjectIDDescriptorSetLayout;
 
     GLTFMetallic_Roughness _metalRoughMaterial;
 
@@ -231,6 +234,8 @@ private:
 
     void initHZBEffects();
     //< Init compute effects.
+
+    void initDescriptorPoolsAndLayouts();
 
     void initDescriptors();
 
@@ -329,12 +334,13 @@ private:
 
     VkDescriptorSetLayout _computeCullDataDescriptorSetLayout;
     VkDescriptorSet _computeCullDataDescriptorSet;
-    
-    VkDescriptorSet _globalDescriptorSet;
+
     VkDescriptorSet _objectDataDescriptorSet;
+    VkDescriptorSet _texturesDescriptorSet;
 
     VkDescriptorSetLayout _HZBDescriptorSetLayout;
     VkDescriptorSet _HZBDescriptorSet;
+    VkDescriptorSet _instanceObjectIDDescriptorSet;
 
     std::vector<VkBufferMemoryBarrier> postCullBarriers;
 
