@@ -126,3 +126,16 @@ void AllocatedBuffer::destroyBuffer(VmaAllocator allocator, const AllocatedBuffe
 {
     vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
 }
+
+glm::mat4 DirectionalLight::getViewMatrix()
+{
+    glm::mat4 view = glm::lookAt(lightPosition, lightPosition + lightDirection, glm::vec3(1, 0, 0));
+    return view;
+}
+
+glm::mat4 DirectionalLight::getProjectionMatrix()
+{
+    glm::mat4 projection = glm::orthoLH_ZO(-shadowExtent.x, shadowExtent.x, -shadowExtent.y, shadowExtent.y, -shadowExtent.z, shadowExtent.z);
+
+    return projection;
+}

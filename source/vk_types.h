@@ -148,6 +148,16 @@ struct GPUDrawPushConstants {
 };
 //< vbuf_types
 
+struct DirectionalLight
+{
+    glm::vec3 lightPosition;
+    glm::vec3 lightDirection;
+    glm::vec3 shadowExtent;
+
+    glm::mat4 getViewMatrix();
+    glm::mat4 getProjectionMatrix();
+};
+
 //> node_types
 class RenderScene;
 

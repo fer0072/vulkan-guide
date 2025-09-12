@@ -23,11 +23,13 @@
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 struct MeshAsset;
-namespace fastgltf {
+namespace fastgltf 
+{
 struct Mesh;
 }
 
-struct DeletionQueue {
+struct DeletionQueue 
+{
     std::deque<std::function<void()>> deletors;
 
     void push_function(std::function<void()>&& function)
@@ -46,14 +48,16 @@ struct DeletionQueue {
     }
 };
 
-struct ComputePushConstants {
+struct ComputePushConstants 
+{
     glm::vec4 data1;
     glm::vec4 data2;
     glm::vec4 data3;
     glm::vec4 data4;
 };
 
-struct ComputeEffect {
+struct ComputeEffect 
+{
     const char* name;
 
     VkPipeline pipeline;
@@ -63,7 +67,8 @@ struct ComputeEffect {
 };
 
 //> Compute cull related data.
-struct CullParams {
+struct CullParams 
+{
     glm::mat4 viewMat;
     glm::mat4 projMat;
     bool distanceCull;
@@ -92,7 +97,8 @@ struct HZBData
     glm::vec2 imageSize;
 };
 
-struct FrameData {
+struct FrameData 
+{
     VkSemaphore _swapchainSemaphore, _renderSemaphore;
     VkFence _renderFence;
 
@@ -105,7 +111,8 @@ struct FrameData {
     AllocatedBuffer _sceneDataBuffer;
 };
 
-struct EngineStats {
+struct EngineStats 
+{
     float frameTime;
     float computeCullPassTime = 0.0f;
     float shadowPassTime = 0.0f;
@@ -113,7 +120,8 @@ struct EngineStats {
     float HZBPassTime = 0.0f;
 };
 
-struct GLTFMetallic_Roughness {
+struct GLTFMetallic_Roughness 
+{
     MaterialPipeline opaquePipeline;
     MaterialPipeline transparentPipeline;
 
@@ -147,16 +155,19 @@ struct GLTFMetallic_Roughness {
     MaterialInstance updateMaterialDescriptorSets(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
 
-struct TextureID {
+struct TextureID 
+{
     uint32_t index;
 };
 
-struct TextureCache {
+struct TextureCache 
+{
     std::vector<VkDescriptorImageInfo> cache;
     TextureID addTexture(const VkImageView& image, VkSampler sampler);
 };
 
-class VulkanEngine {
+class VulkanEngine 
+{
 public:
     // singleton style getter.multiple engines is not supported
     static VulkanEngine& Get();
@@ -294,6 +305,7 @@ private:
     RenderScene _renderScene;
     GPU_sceneData _sceneData;
     Camera _mainCamera;
+    DirectionalLight _mainLight;
 
     std::vector<VkImage> _swapchainImages;
     std::vector<VkImageView> _swapchainImageViews;

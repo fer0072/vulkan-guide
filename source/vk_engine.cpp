@@ -43,9 +43,6 @@ namespace vkGlobals
     float g_zNear = 0.1f;
     float g_zFar = 5000.0f;
     float g_maxDrawDist = 5000.0f;
-
-    bool g_enableOcclusionCull = true;
-    bool g_enableDistanceCull = true;
 }
 
 glm::vec4 normalizePlane(glm::vec4 p)
@@ -438,12 +435,11 @@ void VulkanEngine::updateSceneData()
 
     glm::mat4 projection = _mainCamera.getProjectionMatrix();
 
+    _mainLight.lightPosition = _mainCamera.position;
+
     _sceneData.view = view;
     _sceneData.proj = projection;
     _sceneData.viewproj = projection * view;
-    _sceneData.sunlightDirection = glm::vec4(0.3f, 1.f, 0.3f, 1.0f);
-    _sceneData.sunlightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
-    _sceneData.ambientColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 }
 
 void VulkanEngine::draw()
@@ -478,8 +474,6 @@ void VulkanEngine::draw()
 	VkCommandBufferBeginInfo cmdBeginInfo = vkInit::commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
-
-    _renderScene.buildBatches();
 
 	// transition our main draw image into general layout so we can write into it
 	// we will overwrite it all so we dont care about what was the older layout
@@ -665,16 +659,28 @@ void VulkanEngine::computeCullPass(VkCommandBuffer cmd)
 
     postCullBarriers.clear();
 
+    // Dispatch compute cull for shadow pass.
+    CullParams shadowCullParams;
+    shadowCullParams.viewMat = _mainLight.getViewMatrix();
+    shadowCullParams.projMat = _mainLight.getProjectionMatrix();
+    shadowCullParams.distanceCull = true;
+    shadowCullParams.occlusionCull = false;
+    shadowCullParams.drawDist = 9999999.9f;
+    shadowCullParams.zNear = vkGlobals::g_zNear;
+    shadowCullParams.zFar = 9999999.9f;
+
+    generateComputeCullCommands(cmd, _renderScene.shadowPass, shadowCullParams);
+
+    // Dispatch compute cull for forward pass.
     CullParams forwardCullParams;
     forwardCullParams.viewMat = _mainCamera.getViewMatrix();
 	forwardCullParams.projMat = _mainCamera.getProjectionMatrix();
-    forwardCullParams.distanceCull = vkGlobals::g_enableDistanceCull;
-    forwardCullParams.occlusionCull = vkGlobals::g_enableOcclusionCull;
+    forwardCullParams.distanceCull = true;
+    forwardCullParams.occlusionCull = true;
     forwardCullParams.drawDist = vkGlobals::g_maxDrawDist;
     forwardCullParams.zNear = vkGlobals::g_zNear;
     forwardCullParams.zFar = vkGlobals::g_zFar;
 
-    // TBD shadow pass
 	generateComputeCullCommands(cmd, _renderScene.forwardOpaquePass, forwardCullParams);
     generateComputeCullCommands(cmd, _renderScene.forwardTransparentPass, forwardCullParams);
 
@@ -1334,12 +1340,18 @@ void VulkanEngine::initScene()
 
     glm::mat4 projection = _mainCamera.getProjectionMatrix();
 
+    _mainLight.lightPosition = _mainCamera.position;
+    _mainLight.lightDirection = glm::vec3(0.3f, -1.0f, 0.3f);
+    _mainLight.shadowExtent = glm::vec3(100.0f, 100.0f, 100.0f);
+
     _sceneData.view = view;
 	_sceneData.proj = projection;
 	_sceneData.viewproj = projection * view;
-    _sceneData.sunlightDirection = glm::vec4(0.3f, 1.f, 0.3f, 1.0f);
+    _sceneData.sunlightDirection = glm::vec4(-_mainLight.lightDirection, 1.0f);
     _sceneData.sunlightColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
     _sceneData.ambientColor = glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+
+    
 
     // Load models.
     std::string structurePath = { "..\\..\\assets\\structure.glb" };

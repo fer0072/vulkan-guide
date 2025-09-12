@@ -160,9 +160,8 @@ void RenderScene::preparePassData(VkCommandBuffer cmd, VulkanEngine* engine)
 	// Upload object data to GPU.
 	uploadObjectData(cmd, engine);
 	
-	//TBD MeshPass* meshPasses[3] = { &shadowPass, &forwardOpaquePass, &forwardTransparentPass };
-	MeshPass* meshPasses[2] = { &forwardOpaquePass, &forwardTransparentPass };
-	for (int i = 0; i < 2; i++)
+	MeshPass* meshPasses[3] = { &shadowPass, &forwardOpaquePass, &forwardTransparentPass };
+	for (int i = 0; i < 3; i++)
 	{
 		MeshPass* meshPass = meshPasses[i];
 
@@ -261,7 +260,7 @@ void RenderScene::mergeMeshes(VulkanEngine* engine)
 
 void RenderScene::buildBatches()
 {
-	//buildPassBatches(&shadowPass);
+	buildPassBatches(&shadowPass);
 	buildPassBatches(&forwardOpaquePass);
 	buildPassBatches(&forwardTransparentPass);
 }
