@@ -19,18 +19,18 @@
 #include <glm/gtx/transform.hpp>
 
 #define VMA_IMPLEMENTATION
-#include "vk_mem_alloc.h"
 #ifdef _DEBUG
-constexpr bool bUseValidationLayers = true;
-//#define VMA_DEBUG_LOG_FORMAT(format, ...)  printf((format), __VA_ARGS__)
-//#define VMA_DEBUG_LOG(str)                 printf("%s\n", (str))
-//#define VMA_DEBUG_INITIALIZE_ALLOCATIONS 1
-//#define VMA_DEBUG_DETECT_CORRUPTION 1
-//#define VMA_DEBUG_MARGIN 16
-//#define VMA_DEBUG_GLOBAL_MUTEX 1
+#define VMA_DEBUG_LOG_FORMAT(format, ...)  printf((format), __VA_ARGS__)
+#define VMA_DEBUG_LOG(str)                 printf("%s\n", (str))
+#define VMA_DEBUG_INITIALIZE_ALLOCATIONS 1
+#define VMA_DEBUG_DETECT_CORRUPTION 1
+#define VMA_DEBUG_MARGIN 16
+#define VMA_DEBUG_GLOBAL_MUTEX 1
+constexpr bool bUseValidationLayers = false;
 #else
 constexpr bool bUseValidationLayers = false;
 #endif
+#include "vk_mem_alloc.h"
 
 // we want to immediately abort when there is an error. In normal engines this
 // would give an error message to the user, or perform a dump of state.
@@ -1204,7 +1204,7 @@ void VulkanEngine::initSwapchain()
     createSwapchain(_windowExtent.width, _windowExtent.height);
 
     /*
-    *  Create shadow image.
+    *  Create shadow map.
     */
 
     // Hardcoding the draw format to 32 bit float
@@ -1287,7 +1287,6 @@ void VulkanEngine::initSwapchain()
     *  Create depth pyramid image.
     */
 
-    // Create depth pyramid image.
     _depthPyramidWidth = std::bit_ceil(_windowExtent.width);
     _depthPyramidHeight = std::bit_ceil(_windowExtent.height);
     _depthPyramidLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(_depthPyramidWidth, _depthPyramidHeight)))) + 1;
@@ -1339,11 +1338,14 @@ void VulkanEngine::initSwapchain()
     *  Add to deletion queues.
     */
 	_mainDeletionQueue.push_function([=]() {
+        vkDestroyImageView(_device, _shadowMap.imageView, nullptr);
+        vmaDestroyImage(_allocator, _shadowMap.image, _shadowMap.allocation);
+
 		vkDestroyImageView(_device, _drawImage.imageView, nullptr);
 		vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
 
 		vkDestroyImageView(_device, _depthImage.imageView, nullptr);
-		vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
+		vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation); 
 
         vkDestroySampler(_device, _depthSampler, nullptr);
         vkDestroyImageView(_device, _depthPyramid.imageView, nullptr);
