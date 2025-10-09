@@ -7,4 +7,4 @@ This simple GPU-driven pipeline consists of the following passes:
 - HZB Generation: A compute pass that generates the HZB from the current frame's depth buffer, which will be used for occlusion culling in the next frame.
 - UI Pass: Renders the user interface as a final overlay.
 
-Renderdoc capture:
+Renderdoc capture: ./ToyEngine_rdc.rar
